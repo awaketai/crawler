@@ -17,9 +17,9 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/antchfx/htmlquery"
-	"github.com/awaketai/crawler/collect"
-	"github.com/awaketai/crawler/proxy"
+	log2 "github.com/awaketai/crawler/log"
 	"github.com/chromedp/chromedp"
+	"go.uber.org/zap/zapcore"
 )
 
 // 1.使用正则表达式
@@ -29,25 +29,7 @@ var headerRe = regexp.MustCompile(`<div class="small_imgposition__PYVLm"><img.*?
 
 func main() {
 	// simulation()
-	prxyURLs := []string{"http://127.0.0.1:9999"}
-	p, err := proxy.RoundRobinProxySwitcher(prxyURLs...)
-	if err != nil {
-		fmt.Println("err:", err)
-		return
-	}
-	url := "https://book.douban.com/subject/1007305/"
-	fmt.Printf("proxy:%+v\n", p)
-	var f collect.Fetcher = collect.BrowserFetch{
-		Timeout: 3 * time.Second,
-		Proxy:   p,
-	}
-	body, err := f.Get(url)
-	if err != nil {
-		fmt.Println("err:", err)
-		return
-	}
-	fmt.Println("res:", string(body))
-	getTitle(body)
+	logTest()
 }
 
 var logReg = regexp.MustCompile(`order_id=(\d+)`)
@@ -263,4 +245,12 @@ func NewProxy() (*httputil.ReverseProxy, error) {
 	}
 	proxy := httputil.NewSingleHostReverseProxy(url)
 	return proxy, nil
+}
+
+func logTest() {
+	plugin, c := log2.NewFilePlugin("./log.log", zapcore.InfoLevel)
+	defer c.Close()
+	logger := log2.NewLogger(plugin)
+	logger.Info("log init end")
+
 }
