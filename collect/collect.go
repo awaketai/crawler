@@ -15,14 +15,14 @@ import (
 )
 
 type Fetcher interface {
-	Get(url string) ([]byte, error)
+	Get(*Request) ([]byte, error)
 }
 
 type BaseFetch struct {
 }
 
-func (BaseFetch) Get(url string) ([]byte, error) {
-	resp, err := http.Get(url)
+func (BaseFetch) Get(req *Request) ([]byte, error) {
+	resp, err := http.Get(req.Url)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ type BrowserFetch struct {
 	Proxy proxy.ProxyFunc
 }
 
-func (b BrowserFetch) Get(url string) ([]byte, error) {
+func (b BrowserFetch) Get(req *Request) ([]byte, error) {
 	client := &http.Client{
 		Timeout: b.Timeout,
 	}
@@ -54,12 +54,15 @@ func (b BrowserFetch) Get(url string) ([]byte, error) {
 		client.Transport = trasnport
 	}
 	
-	req, err := http.NewRequest("GET", url, nil)
+	request, err := http.NewRequest("GET", req.Url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/117.0")
-	resp, err := client.Do(req)
+	if len(req.Cookie) > 0 {
+		request.Header.Set("Cookie",req.Cookie)
+	}
+	request.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/117.0")
+	resp, err := client.Do(request)
 
 	if err != nil {
 		return nil, err

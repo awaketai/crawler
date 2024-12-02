@@ -13,12 +13,19 @@ import (
 	"os/exec"
 	"reflect"
 	"regexp"
+	"sort"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/antchfx/htmlquery"
+	"github.com/awaketai/crawler/collect"
 	log2 "github.com/awaketai/crawler/log"
+	"github.com/awaketai/crawler/parse/doubangroup"
+	"github.com/awaketai/crawler/proxy"
 	"github.com/chromedp/chromedp"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -29,7 +36,13 @@ var headerRe = regexp.MustCompile(`<div class="small_imgposition__PYVLm"><img.*?
 
 func main() {
 	// simulation()
-	logTest()
+	// logTest()
+	// pingPong()
+	// search2Test()
+	// fallIn()
+	// subWorkerTest()
+	// course()
+	douban()
 }
 
 var logReg = regexp.MustCompile(`order_id=(\d+)`)
@@ -253,4 +266,250 @@ func logTest() {
 	logger := log2.NewLogger(plugin)
 	logger.Info("log init end")
 
+}
+
+var (
+	flag  int64 = 0
+	count int64 = 0
+	mu    sync.WaitGroup
+)
+
+func atomicTest() {
+
+	for {
+		if atomic.CompareAndSwapInt64(&flag, 0, 1) {
+			count++
+			atomic.StoreInt64(&flag, 0)
+			return
+		}
+	}
+}
+
+// ping pong模式
+func pingPong() {
+	var ball int
+	table := make(chan int)
+	go player(table)
+	go player(table)
+	table <- ball
+	time.Sleep(1 * time.Second)
+	a := <-table
+	fmt.Println("--a:", a)
+}
+
+func player(table chan int) {
+	for {
+		ball := <-table
+		ball++
+		time.Sleep(100 * time.Millisecond)
+		table <- ball
+	}
+}
+
+// 查找某个文件夹中是否有特殊的关键字
+// 并发方式查询
+
+func search(ch chan string, msg string) {
+	var i int
+	for {
+		ch <- fmt.Sprintf("get %s %d", msg, i)
+		i++
+		time.Sleep(1000 * time.Millisecond)
+	}
+}
+
+func searchTest() {
+	ch := make(chan string)
+	go search(ch, "jonson")
+	go search(ch, "ola")
+	for i := range ch {
+		fmt.Println(i)
+	}
+}
+
+func search2(msg string) chan string {
+	var ch = make(chan string)
+	go func() {
+		var i int
+		for {
+			ch <- fmt.Sprintf("get %s %d", msg, i)
+			i++
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+	return ch
+}
+
+func search2Test() {
+	ch1 := search2("josn")
+	ch2 := search2("aa")
+	for {
+		select {
+		case msg := <-ch1:
+			fmt.Println("msg1:", msg)
+		case msg := <-ch2:
+			fmt.Println("msg2:", msg)
+
+		}
+	}
+}
+
+func worker(ch <-chan int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		task, ok := <-ch
+		if !ok {
+			return
+		}
+		d := time.Duration(task) * time.Millisecond
+		time.Sleep(d)
+		fmt.Println("processing task", task)
+
+	}
+}
+
+func pool(wg *sync.WaitGroup, workers, tasks int) {
+	ch := make(chan int)
+	for i := 0; i < workers; i++ {
+		go worker(ch, wg)
+	}
+	for i := 0; i < tasks; i++ {
+		ch <- i
+	}
+	close(ch)
+}
+
+func fallIn() {
+	var wg sync.WaitGroup
+	wg.Add(36)
+	go pool(&wg, 36, 50)
+	wg.Wait()
+}
+
+const (
+	WORKERS    = 5
+	SUBWORKERS = 3
+	TASKSK     = 20
+	SUBTASKS   = 10
+)
+
+func subworker(subtasks chan int) {
+	for {
+		task, ok := <-subtasks
+		if !ok {
+			return
+		}
+		time.Sleep(time.Duration(task) * time.Millisecond)
+		fmt.Println("sub worker:", task)
+	}
+}
+
+func worker2(tasks <-chan int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		task, ok := <-tasks
+		if !ok {
+			return
+		}
+		subtasks := make(chan int)
+		for i := 0; i < SUBTASKS; i++ {
+			go subworker(subtasks)
+		}
+		for i := 0; i < SUBTASKS; i++ {
+			task1 := task * i
+			subtasks <- task1
+		}
+		close(subtasks)
+	}
+}
+
+func subWorkerTest() {
+	var wg sync.WaitGroup
+	wg.Add(WORKERS)
+	tasks := make(chan int)
+	for i := 0; i < WORKERS; i++ {
+		go worker2(tasks, &wg)
+	}
+
+	for i := 0; i < TASKSK; i++ {
+		tasks <- i
+	}
+	close(tasks)
+	wg.Wait()
+}
+
+// 计算机课程和其前序课程的映射关系
+var prereqs = map[string][]string{"algorithms": {"data structures"}, "calculus": {"linear algebra"}, "compilers": {"data structures", "formal languages", "computer organization"}, "data structures": {"discrete math"}, "databases": {"data structures"}, "discrete math": {"intro to programming"}, "formal languages": {"discrete math"}, "networks": {"operating systems"}, "operating systems": {"data structures", "computer organization"}, "programming languages": {"data structures", "computer organization"}}
+
+func course() {
+	for i, course := range topoSort(prereqs) {
+		fmt.Printf("%d:\t%s\n", i+1, course)
+	}
+}
+
+func topoSort(m map[string][]string) []string {
+	var order []string
+	seen := make(map[string]bool)
+	var visitAll func(items []string)
+
+	visitAll = func(items []string) {
+		for _, item := range items {
+			if !seen[item] {
+				seen[item] = true
+				visitAll(m[item])
+				order = append(order, item)
+			}
+		}
+	}
+	var keys []string
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	visitAll(keys)
+	return order
+}
+
+func douban() {
+	plugin := log2.NewStdoutPlugin(zapcore.InfoLevel)
+	logger := log2.NewLogger(plugin)
+	logger.Info("log init end")
+	cookie := `viewed="27043167_25863515_10746113_2243615_36667173_1007305_1091086"; __utma=30149280.1138703939.1688435343.1733118222.1733122303.10; ll="108288"; bid=p4zwdHrVY7w; __utmz=30149280.1729597487.8.2.utmcsr=ruanyifeng.com|utmccn=(referral)|utmcmd=referral|utmcct=/; _pk_id.100001.8cb4=18c04f5fb62d2e52.1733118221.; __utmc=30149280; dbcl2="285159894:dMkA02qtf50"; ck=tQmt; push_noty_num=0; push_doumail_num=0; __utmv=30149280.28515; __yadk_uid=3D5K4bndWlX7TLf8CjyAjVV5aB26MFa8; loc-last-index-location-id="108288"; _vwo_uuid_v2=DA5C0F35C5141ECEE7520D43DF2106264|8d200da2a9f789409ca0ce01e00d2789; frodotk_db="4a184671f7672f9cde48d355e6358ed4"; _pk_ses.100001.8cb4=1; __utmb=30149280.26.9.1733123639802; __utmt=1`
+	var worklist []*collect.Request
+	for i := 0; i <= 25; i += 25 {
+		str := fmt.Sprintf("https://www.douban.com/group/280198/discussion?start=%d&type=new", i)
+		worklist = append(worklist, &collect.Request{
+			Url:       str,
+			ParseFunc: doubangroup.ParseURL,
+			Cookie:    cookie,
+		})
+	}
+	proxyURLs := []string{"http://127.0.0.1:4780"}
+	p, err := proxy.RoundRobinProxySwitcher(proxyURLs...)
+	if err != nil {
+		logger.Error("RoundRobinProxySwitcher err:", zap.Error(err))
+	}
+
+	var f collect.Fetcher = &collect.BrowserFetch{
+		Timeout: 10 * time.Second,
+		Proxy:   p,
+	}
+
+	for len(worklist) > 0 {
+		items := worklist
+		worklist = nil
+		for _, item := range items {
+			body, err := f.Get(item)
+			time.Sleep(1 * time.Second)
+			if err != nil {
+				logger.Error("read content err", zap.Error(err))
+				continue
+			}
+			res := item.ParseFunc(body, item)
+			for _, item := range res.Items {
+				logger.Info("result", zap.String("get url:", item.(string)))
+			}
+			worklist = append(worklist, res.Requests...)
+		}
+	}
 }
