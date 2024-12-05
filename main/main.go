@@ -42,7 +42,8 @@ func main() {
 	// fallIn()
 	// subWorkerTest()
 	// course()
-	douban()
+	// douban()
+	writeToNilCh()
 }
 
 var logReg = regexp.MustCompile(`order_id=(\d+)`)
@@ -511,5 +512,17 @@ func douban() {
 			}
 			worklist = append(worklist, res.Requests...)
 		}
+	}
+}
+
+// 往nil通道中写入数据会陷入到阻塞的状态
+func writeToNilCh() {
+	var ch chan *int
+	go func() {
+		<-ch
+	}()
+	select {
+	case ch <- nil:
+		fmt.Println("it's time")
 	}
 }
