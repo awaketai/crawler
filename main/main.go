@@ -473,76 +473,11 @@ func topoSort(m map[string][]string) []string {
 	return order
 }
 
-func douban() {
-	plugin := log2.NewStdoutPlugin(zapcore.InfoLevel)
-	logger := log2.NewLogger(plugin)
-	logger.Info("log init end")
-	cookie := `viewed="27043167_25863515_10746113_2243615_36667173_1007305_1091086"; __utma=30149280.1138703939.1688435343.1733118222.1733122303.10; ll="108288"; bid=p4zwdHrVY7w; __utmz=30149280.1729597487.8.2.utmcsr=ruanyifeng.com|utmccn=(referral)|utmcmd=referral|utmcct=/; _pk_id.100001.8cb4=18c04f5fb62d2e52.1733118221.; __utmc=30149280; dbcl2="285159894:dMkA02qtf50"; ck=tQmt; push_noty_num=0; push_doumail_num=0; __utmv=30149280.28515; __yadk_uid=3D5K4bndWlX7TLf8CjyAjVV5aB26MFa8; loc-last-index-location-id="108288"; _vwo_uuid_v2=DA5C0F35C5141ECEE7520D43DF2106264|8d200da2a9f789409ca0ce01e00d2789; frodotk_db="4a184671f7672f9cde48d355e6358ed4"; _pk_ses.100001.8cb4=1; __utmb=30149280.26.9.1733123639802; __utmt=1`
-	var worklist []*collect.Request
-	for i := 0; i <= 25; i += 25 {
-		str := fmt.Sprintf("https://www.douban.com/group/280198/discussion?start=%d&type=new", i)
-		worklist = append(worklist, &collect.Request{
-			Url:       str,
-			ParseFunc: doubangroup.ParseURL,
-			Cookie:    cookie,
-		})
-	}
-	proxyURLs := []string{"http://127.0.0.1:4780"}
-	p, err := proxy.RoundRobinProxySwitcher(proxyURLs...)
-	if err != nil {
-		logger.Error("RoundRobinProxySwitcher err:", zap.Error(err))
-	}
-
-	var f collect.Fetcher = &collect.BrowserFetch{
-		Timeout: 10 * time.Second,
-		Proxy:   p,
-	}
-
-	for len(worklist) > 0 {
-		items := worklist
-		worklist = nil
-		for _, item := range items {
-			body, err := f.Get(item)
-			time.Sleep(1 * time.Second)
-			if err != nil {
-				logger.Error("read content err", zap.Error(err))
-				continue
-			}
-			res := item.ParseFunc(body, item)
-			for _, item := range res.Items {
-				logger.Info("result", zap.String("get url:", item.(string)))
-			}
-			worklist = append(worklist, res.Requests...)
-		}
-	}
-}
-
-// 往nil通道中写入数据会陷入到阻塞的状态
-func writeToNilCh() {
-	var ch chan *int
-	go func() {
-		<-ch
-	}()
-	select {
-	case ch <- nil:
-		fmt.Println("it's time")
-	}
-}
-
 func multiWorkDouban() {
 	plugin := log2.NewStdoutPlugin(zapcore.InfoLevel)
 	logger := log2.NewLogger(plugin)
-	var seeds []*collect.Request
+	var seeds = make([]*collect.Task, 0, 1000)
 	cookie := `viewed="27043167_25863515_10746113_2243615_36667173_1007305_1091086"; __utma=30149280.1138703939.1688435343.1733118222.1733122303.10; ll="108288"; bid=p4zwdHrVY7w; __utmz=30149280.1729597487.8.2.utmcsr=ruanyifeng.com|utmccn=(referral)|utmcmd=referral|utmcct=/; _pk_id.100001.8cb4=18c04f5fb62d2e52.1733118221.; __utmc=30149280; dbcl2="285159894:dMkA02qtf50"; ck=tQmt; push_noty_num=0; push_doumail_num=0; __utmv=30149280.28515; __yadk_uid=3D5K4bndWlX7TLf8CjyAjVV5aB26MFa8; loc-last-index-location-id="108288"; _vwo_uuid_v2=DA5C0F35C5141ECEE7520D43DF2106264|8d200da2a9f789409ca0ce01e00d2789; frodotk_db="4a184671f7672f9cde48d355e6358ed4"; _pk_ses.100001.8cb4=1; __utmb=30149280.26.9.1733123639802; __utmt=1`
-
-	for i := 0; i <= 25; i += 25 {
-		str := fmt.Sprintf("https://www.douban.com/group/280198/discussion?start=%d&type=new", i)
-		seeds = append(seeds, &collect.Request{
-			Url:       str,
-			ParseFunc: doubangroup.ParseURL,
-			Cookie:    cookie,
-		})
-	}
 	proxyURLs := []string{"http://127.0.0.1:4780"}
 	p, err := proxy.RoundRobinProxySwitcher(proxyURLs...)
 	if err != nil {
@@ -553,11 +488,26 @@ func multiWorkDouban() {
 		Logger:  logger,
 		Proxy:   p,
 	}
-	s := engine.NewScheduleEngine(
+	for i := 0; i <= 25; i += 25 {
+		str := fmt.Sprintf("https://www.douban.com/group/280198/discussion?start=%d&type=new", i)
+		seeds = append(seeds, &collect.Task{
+			Url: str,
+			RootReq: &collect.Request{
+				ParseFunc: doubangroup.ParseURL,
+			},
+			Cookie:   cookie,
+			WaitTime: 2 * time.Second,
+			MaxDepth: 5,
+			Fetcher: f,
+		})
+	}
+
+	s := engine.NewCrawler(
 		engine.WithFetcher(f),
 		engine.WithLogger(logger),
 		engine.WithSeeds(seeds),
 		engine.WithWorkCount(5),
+		engine.WithScheduler(engine.NewSchedult()),
 	)
 	s.Run()
 }

@@ -60,11 +60,11 @@ func (b BrowserFetch) Get(req *Request) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(req.Cookie) > 0 {
-		request.Header.Set("Cookie",req.Cookie)
+	if len(req.Task.Cookie) > 0 {
+		request.Header.Set("Cookie",req.Task.Cookie)
 	}
 	request.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/117.0")
-	time.Sleep(req.WaitTime)
+	time.Sleep(req.Task.WaitTime)
 	resp, err := client.Do(request)
 
 	if err != nil {
