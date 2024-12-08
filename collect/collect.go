@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/awaketai/crawler/proxy"
+	"go.uber.org/zap"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/unicode"
@@ -41,6 +42,7 @@ func (BaseFetch) Get(req *Request) ([]byte, error) {
 type BrowserFetch struct {
 	Timeout time.Duration
 	Proxy proxy.ProxyFunc
+	Logger *zap.Logger
 }
 
 func (b BrowserFetch) Get(req *Request) ([]byte, error) {
@@ -62,6 +64,7 @@ func (b BrowserFetch) Get(req *Request) ([]byte, error) {
 		request.Header.Set("Cookie",req.Cookie)
 	}
 	request.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/117.0")
+	time.Sleep(req.WaitTime)
 	resp, err := client.Do(request)
 
 	if err != nil {

@@ -15,13 +15,20 @@ type ScheduleEngine struct {
 	requestCh chan *collect.Request
 	// workerCh 分配任务给worker
 	workerCh chan *collect.Request
-	// WorkCount worker数量
-	WorkCount int
-	Fetcher   collect.Fetcher
-	Logger    *zap.Logger
 	// out 处理爬取后的数据
 	out   chan collect.ParseResult
-	Seeds []*collect.Request
+	options
+}
+
+func NewScheduleEngine(opts ...Option) *ScheduleEngine {
+	options := defaultOptions
+	for _,opt := range opts {
+		opt(&options)
+	}
+	s := &ScheduleEngine{}
+	s.options = options
+
+	return s
 }
 
 func (s *ScheduleEngine) Run() {
