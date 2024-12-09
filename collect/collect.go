@@ -65,7 +65,6 @@ func (b BrowserFetch) Get(req *Request) ([]byte, error) {
 		request.Header.Set("Cookie", req.Task.Cookie)
 	}
 	userAgent := extensions.GenerateRandomUA()
-	fmt.Println("ua:", userAgent)
 	request.Header.Set("User-Agent", userAgent)
 	time.Sleep(req.Task.WaitTime)
 	resp, err := client.Do(request)

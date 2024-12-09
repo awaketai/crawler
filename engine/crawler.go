@@ -11,6 +11,9 @@ type Crawler struct {
 	out chan collect.ParseResult
 	Visited map[string]bool
 	VisitedLock sync.Mutex
+	// failures 失败尝试队列
+	failures map[string]*collect.Request
+	failureLock sync.Mutex
 	options
 }
 
@@ -107,4 +110,21 @@ func (c *Crawler) StoreVisited(reqs ...*collect.Request){
 		uniqie := v.Unique()
 		c.Visited[uniqie] = true
 	}
+}
+
+func (c *Crawler) SetFailure(req *collect.Request){
+	if !req.Task.Reload {
+		c.VisitedLock.Lock()
+		unique := req.Unique()
+		delete(c.Visited,unique)
+		c.VisitedLock.Unlock()
+	}
+	c.failureLock.Lock()
+	defer c.failureLock.Unlock()
+	if _,ok := c.failures[req.Unique()]; !ok {
+		c.failures[req.Unique()] = req
+		c.scheduler.Push(req)
+	}
+	// todo 失败两次，加入失败队列中
+
 }

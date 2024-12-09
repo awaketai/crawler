@@ -20,6 +20,8 @@ type Task struct{
 	Fetcher Fetcher
 	Visited map[string]bool
 	VisitedLock sync.Mutex
+	// Reload 网站是否可以重复爬取
+	Reload bool 
 }
 
 // Request 单个请求
