@@ -494,6 +494,8 @@ func multiWorkDouban() {
 			Url: str,
 			RootReq: &collect.Request{
 				ParseFunc: doubangroup.ParseURL,
+				Method: "GET",
+				Priority: 1,
 			},
 			Cookie:   cookie,
 			WaitTime: 2 * time.Second,

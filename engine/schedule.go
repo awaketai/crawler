@@ -19,6 +19,8 @@ type Schedule struct {
 	workerCh chan *collect.Request
 	reqQueue []*collect.Request
 	Logger   *zap.Logger
+	// priReqQueue 优先队列
+	priReqQueue []*collect.Request
 }
 
 func NewSchedult() *Schedule {
@@ -31,33 +33,45 @@ func NewSchedult() *Schedule {
 	return s
 }
 
-func (s *Schedule) Push(reqs ...*collect.Request){
-	for _,req := range reqs {
-		s.requestCh <-req
+func (s *Schedule) Push(reqs ...*collect.Request) {
+	for _, req := range reqs {
+		s.requestCh <- req
 	}
 }
 
 func (s *Schedule) Pull() *collect.Request {
-	r := <- s.workerCh
+	r := <-s.workerCh
 	return r
 }
 
-func (s *Schedule) Schedule(){
+func (s *Schedule) Schedule() {
+	var (
+		req *collect.Request
+		ch  chan *collect.Request
+	)
 	for {
-		var (
-			req *collect.Request
-			ch chan *collect.Request
-		)
-		if len(s.reqQueue) > 0 {
+		if req == nil && len(s.priReqQueue) > 0 {
+			// 先执行优先队列中的任务
+			req = s.priReqQueue[0]
+			s.priReqQueue = s.priReqQueue[1:]
+			ch = s.workerCh
+		}
+		if req == nil && len(s.reqQueue) > 0 {
 			req = s.reqQueue[0]
 			s.reqQueue = s.reqQueue[1:]
 			ch = s.workerCh
 		}
 		select {
 		case r := <-s.requestCh:
-			s.reqQueue = append(s.reqQueue, r)
+			if r.Priority > 0 {
+				s.priReqQueue = append(s.priReqQueue, r)
+			} else {
+				s.reqQueue = append(s.reqQueue, r)
+			}
 		case ch <- req:
-			fmt.Println("ch received req:",req)
+			fmt.Println("ch received req:", req)
+			req = nil
+			ch = nil
 		}
 	}
 }

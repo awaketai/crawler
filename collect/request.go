@@ -30,6 +30,7 @@ type Request struct{
 	// Depth 当前任务的深度
 	Depth int
 	Method string
+	Priority int
 	ParseFunc func([]byte,*Request)  ParseResult
 }
 
