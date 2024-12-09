@@ -1,12 +1,16 @@
 package engine
 
 import (
+	"sync"
+
 	"github.com/awaketai/crawler/collect"
 	"go.uber.org/zap"
 )
 
 type Crawler struct {
 	out chan collect.ParseResult
+	Visited map[string]bool
+	VisitedLock sync.Mutex
 	options
 }
 
@@ -15,11 +19,13 @@ func NewCrawler(opts ...Option) *Crawler {
 	for _, opt := range opts {
 		opt(&options)
 	}
-	out := make(chan collect.ParseResult)
-	c := &Crawler{}
+	c := &Crawler{
+		out: make(chan collect.ParseResult),
+		Visited: map[string]bool{},
+		VisitedLock: sync.Mutex{},
+	}
 	c.options = options
-	c.out = out
-
+	
 	return c
 }
 
@@ -50,6 +56,12 @@ func (c *Crawler) CreateWork() {
 			c.Logger.Error("check failed", zap.Error(err))
 			continue
 		}
+		// 检测是否已访问过当前请求
+		if c.HasVisited(r) {
+			c.Logger.Error("requested has visited", zap.String("url",r.Url))
+			continue
+		}
+		c.StoreVisited(r)
 		body, err := r.Task.Fetcher.Get(r)
 		if err != nil {
 			c.Logger.Error("fetch failed", zap.Error(err))
@@ -79,5 +91,20 @@ func (c *Crawler) HandleResult() {
 			c.Logger.Sugar().Info("get res:", item)
 		}
 	}
+}
 
+func (c *Crawler) HasVisited(r *collect.Request) bool {
+	c.VisitedLock.Lock()
+	defer c.VisitedLock.Unlock()
+	unique := r.Unique()
+	return c.Visited[unique]
+}
+
+func (c *Crawler) StoreVisited(reqs ...*collect.Request){
+	c.VisitedLock.Lock()
+	defer c.VisitedLock.Unlock()
+	for _, v := range reqs {
+		uniqie := v.Unique()
+		c.Visited[uniqie] = true
+	}
 }
