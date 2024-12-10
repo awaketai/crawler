@@ -43,9 +43,10 @@ func (c *Crawler) Run() {
 func (c *Crawler) Schedule() {
 	var reqs []*collect.Request
 	for _, seed := range c.Seeds {
-		seed.RootReq.Task = seed
-		seed.RootReq.Url = seed.Url
-		reqs = append(reqs, seed.RootReq)
+		// 获取初始化任务
+		task := Store.hash[seed.Name]
+		rootReqs := task.Rule.Root()
+		reqs = append(reqs, rootReqs...)
 	}
 
 	go c.scheduler.Schedule()

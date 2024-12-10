@@ -9,6 +9,7 @@ import (
 )
 
 type Task struct{
+	Name string 
 	Url string
 	Cookie string
 	// WaitTime 第个请求等待多长时间
@@ -22,6 +23,8 @@ type Task struct{
 	VisitedLock sync.Mutex
 	// Reload 网站是否可以重复爬取
 	Reload bool 
+	// Rule 当前任务规则
+	Rule RuleTree
 }
 
 // Request 单个请求
@@ -34,6 +37,7 @@ type Request struct{
 	Method string
 	Priority int
 	ParseFunc func([]byte,*Request)  ParseResult
+	RuleName string
 }
 
 type ParseResult struct{
