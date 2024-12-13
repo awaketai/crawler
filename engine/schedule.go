@@ -23,7 +23,7 @@ type Schedule struct {
 	priReqQueue []*collect.Request
 }
 
-func NewSchedult() *Schedule {
+func NewSchedule() *Schedule {
 	s := &Schedule{}
 	requestCh := make(chan *collect.Request)
 	worketCh := make(chan *collect.Request)

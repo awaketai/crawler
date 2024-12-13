@@ -491,16 +491,19 @@ func multiWorkDouban() {
 	for i := 0; i <= 25; i += 25 {
 		str := fmt.Sprintf("https://www.douban.com/group/280198/discussion?start=%d&type=new", i)
 		seeds = append(seeds, &collect.Task{
-			Url: str,
+			Propety: collect.Propety{
+				Url:      str,
+				Cookie:   cookie,
+				WaitTime: 2 * time.Second,
+				MaxDepth: 5,
+			},
+
 			RootReq: &collect.Request{
 				ParseFunc: doubangroup.ParseURL,
 				Method:    "GET",
 				Priority:  1,
 			},
-			Cookie:   cookie,
-			WaitTime: 2 * time.Second,
-			MaxDepth: 5,
-			Fetcher:  f,
+			Fetcher: f,
 		})
 	}
 
@@ -509,7 +512,7 @@ func multiWorkDouban() {
 		engine.WithLogger(logger),
 		engine.WithSeeds(seeds),
 		engine.WithWorkCount(5),
-		engine.WithScheduler(engine.NewSchedult()),
+		engine.WithScheduler(engine.NewSchedule()),
 	)
 	s.Run()
 }
@@ -530,16 +533,19 @@ func task2() {
 		Proxy:   p,
 	}
 	seeds = append(seeds, &collect.Task{
-		Name:    "find_douban_sun_room",
-		Cookie: cookie,
+		Propety: collect.Propety{
+			Name:   "find_douban_sun_room",
+			Cookie: cookie,
+		},
+
 		Fetcher: f,
 	})
 	s := engine.NewCrawler(
 		engine.WithFetcher(f),
 		engine.WithLogger(logger),
 		engine.WithSeeds(seeds),
-		engine.WithWorkCount(5),
-		engine.WithScheduler(engine.NewSchedult()),
+		engine.WithWorkCount(2),
+		engine.WithScheduler(engine.NewSchedule()),
 	)
 	s.Run()
 }

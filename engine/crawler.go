@@ -1,18 +1,20 @@
 package engine
 
 import (
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/awaketai/crawler/collect"
 	"go.uber.org/zap"
 )
 
 type Crawler struct {
-	out chan collect.ParseResult
-	Visited map[string]bool
+	out         chan collect.ParseResult
+	Visited     map[string]bool
 	VisitedLock sync.Mutex
 	// failures 失败尝试队列
-	failures map[string]*collect.Request
+	failures    map[string]*collect.Request
 	failureLock sync.Mutex
 	options
 }
@@ -23,12 +25,12 @@ func NewCrawler(opts ...Option) *Crawler {
 		opt(&options)
 	}
 	c := &Crawler{
-		out: make(chan collect.ParseResult),
-		Visited: map[string]bool{},
+		out:         make(chan collect.ParseResult),
+		Visited:     map[string]bool{},
 		VisitedLock: sync.Mutex{},
 	}
 	c.options = options
-	
+
 	return c
 }
 
@@ -45,7 +47,19 @@ func (c *Crawler) Schedule() {
 	for _, seed := range c.Seeds {
 		// 获取初始化任务
 		task := Store.hash[seed.Name]
-		rootReqs := task.Rule.Root()
+		if task == nil {
+			c.Logger.Error("current seed task nil", zap.String("seed name", seed.Name))
+			continue
+		}
+		task.Fetcher = seed.Fetcher
+		rootReqs, err := task.Rule.Root()
+		if err != nil {
+			c.Logger.Error("task rule root err:", zap.Error(err))
+			continue
+		}
+		for _, req := range rootReqs {
+			req.Task = task
+		}
 		reqs = append(reqs, rootReqs...)
 	}
 
@@ -62,7 +76,7 @@ func (c *Crawler) CreateWork() {
 		}
 		// 检测是否已访问过当前请求
 		if c.HasVisited(r) {
-			c.Logger.Error("requested has visited", zap.String("url",r.Url))
+			c.Logger.Error("requested has visited", zap.String("url", r.Url))
 			continue
 		}
 		c.StoreVisited(r)
@@ -79,7 +93,13 @@ func (c *Crawler) CreateWork() {
 			)
 			continue
 		}
-		result := r.ParseFunc(body, r)
+		// 获取当前任务对应的规则
+		rule := r.Task.Rule.Trunk[r.RuleName]
+		result, _ := rule.ParseFunc(&collect.CrawlerContext{
+			Body: body,
+			Req:  r,
+		})
+		// 新任务加入队列中
 		if len(result.Requests) > 0 {
 			go c.scheduler.Push(result.Requests...)
 		}
@@ -89,11 +109,20 @@ func (c *Crawler) CreateWork() {
 }
 
 func (c *Crawler) HandleResult() {
-	for res := range c.out {
-		for _, item := range res.Items {
-			// to do store
-			c.Logger.Sugar().Info("get res:", item)
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			tmp := collect.ParseResult{}
+			c.out <- tmp
 		}
+	}()
+	for res := range c.out {
+		fmt.Printf("--res:%v\n", res)
+		// for _, item := range res.Items {
+		// 	// to do store
+		// 	c.Logger.Sugar().Info("get res:", item)
+		// }
 	}
 }
 
@@ -104,7 +133,7 @@ func (c *Crawler) HasVisited(r *collect.Request) bool {
 	return c.Visited[unique]
 }
 
-func (c *Crawler) StoreVisited(reqs ...*collect.Request){
+func (c *Crawler) StoreVisited(reqs ...*collect.Request) {
 	c.VisitedLock.Lock()
 	defer c.VisitedLock.Unlock()
 	for _, v := range reqs {
@@ -113,16 +142,16 @@ func (c *Crawler) StoreVisited(reqs ...*collect.Request){
 	}
 }
 
-func (c *Crawler) SetFailure(req *collect.Request){
+func (c *Crawler) SetFailure(req *collect.Request) {
 	if !req.Task.Reload {
 		c.VisitedLock.Lock()
 		unique := req.Unique()
-		delete(c.Visited,unique)
+		delete(c.Visited, unique)
 		c.VisitedLock.Unlock()
 	}
 	c.failureLock.Lock()
 	defer c.failureLock.Unlock()
-	if _,ok := c.failures[req.Unique()]; !ok {
+	if _, ok := c.failures[req.Unique()]; !ok {
 		c.failures[req.Unique()] = req
 		c.scheduler.Push(req)
 	}

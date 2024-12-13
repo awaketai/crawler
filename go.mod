@@ -1,6 +1,8 @@
 module github.com/awaketai/crawler
 
-go 1.20
+go 1.22
+
+toolchain go1.22.8
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
@@ -23,7 +25,9 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/robertkrimen/otto v0.5.1 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/sys v0.12.0 // indirect
+	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
