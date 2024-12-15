@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestSlice(t *testing.T) {
@@ -26,4 +27,23 @@ func TestSlice(t *testing.T) {
 	num3 := nums[3:]
 	fmt.Printf("num1 cap:%v ,nums2 cap:%v: nums3 cap:%v\n", cap(num1), cap(num2), cap(num3))
 
+}
+
+func TestCh(t *testing.T) {
+	ticker := time.NewTicker(1 * time.Second)
+	ticker2 := time.NewTicker(2 * time.Second)
+	var ch = make(chan int)
+	go func() {
+		for range ticker2.C {
+			close(ch)
+		}
+	}()
+	for range ticker.C {
+		select {
+		case ch <- 12:
+			fmt.Println("send succes")
+		default:
+			fmt.Println("send failed")
+		}
+	}
 }

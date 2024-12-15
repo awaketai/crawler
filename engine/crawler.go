@@ -3,7 +3,6 @@ package engine
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/awaketai/crawler/collect"
 	"go.uber.org/zap"
@@ -48,13 +47,13 @@ func (c *Crawler) Schedule() {
 		// 获取初始化任务
 		task := Store.hash[seed.Name]
 		if task == nil {
-			c.Logger.Error("current seed task nil", zap.String("seed name", seed.Name))
+			c.Logger.Error("current seed task nil", zap.String("seed_name", seed.Name))
 			continue
 		}
 		task.Fetcher = seed.Fetcher
 		rootReqs, err := task.Rule.Root()
 		if err != nil {
-			c.Logger.Error("task rule root err:", zap.Error(err))
+			c.Logger.Error("task rule root err:", zap.String("seed_name", seed.Name), zap.Error(err))
 			continue
 		}
 		for _, req := range rootReqs {
@@ -70,12 +69,13 @@ func (c *Crawler) Schedule() {
 func (c *Crawler) CreateWork() {
 	for {
 		r := c.scheduler.Pull()
+		fmt.Printf("gr req:%+v\n", r)
 		if err := r.Check(); err != nil {
 			c.Logger.Error("check failed", zap.Error(err))
 			continue
 		}
 		// 检测是否已访问过当前请求
-		if c.HasVisited(r) {
+		if !r.Task.Reload && c.HasVisited(r) {
 			c.Logger.Error("requested has visited", zap.String("url", r.Url))
 			continue
 		}
@@ -83,6 +83,7 @@ func (c *Crawler) CreateWork() {
 		body, err := r.Task.Fetcher.Get(r)
 		if err != nil {
 			c.Logger.Error("fetch failed", zap.Error(err))
+			c.SetFailure(r)
 			continue
 		}
 		if len(body) < 6000 {
@@ -109,14 +110,6 @@ func (c *Crawler) CreateWork() {
 }
 
 func (c *Crawler) HandleResult() {
-	go func() {
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			tmp := collect.ParseResult{}
-			c.out <- tmp
-		}
-	}()
 	for res := range c.out {
 		fmt.Printf("--res:%v\n", res)
 		// for _, item := range res.Items {

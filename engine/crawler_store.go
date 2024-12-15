@@ -6,9 +6,9 @@ import (
 	"github.com/robertkrimen/otto"
 )
 
-
 func init() {
 	Store.Add(doubangroup.DouBanGroupTask)
+	Store.AddJSTask(doubangroup.DouBanGroupJSTask)
 }
 
 // Store 全局爬虫任务实例
@@ -17,54 +17,54 @@ var Store = &CrawlerStore{
 	hash: map[string]*collect.Task{},
 }
 
-type CrawlerStore struct{
+type CrawlerStore struct {
 	list []*collect.Task
 	hash map[string]*collect.Task
 }
 
-func (c *CrawlerStore) Add(task *collect.Task){
+func (c *CrawlerStore) Add(task *collect.Task) {
 	c.hash[task.Name] = task
 	c.list = append(c.list, task)
 }
 
-func (c *CrawlerStore) AddJSTask(m *collect.TaskMode){
+func (c *CrawlerStore) AddJSTask(m *collect.TaskMode) {
 	task := &collect.Task{
 		Propety: m.Propety,
 	}
-	task.Rule.Root = func() ([]*collect.Request,error) {
+	task.Rule.Root = func() ([]*collect.Request, error) {
 		// js动态虚拟机
 		vm := otto.New()
-		vm.Set("AddJSReq",AddJSReq)
-		v,err := vm.Eval(m.Root)
-		if err != nil { 
-			return nil,err
+		vm.Set("AddJSReq", AddJSReq)
+		v, err := vm.Eval(m.Root)
+		if err != nil {
+			return nil, err
 		}
-		e,err := v.Export()
-		if err != nil { 
-			return nil,err
+		e, err := v.Export()
+		if err != nil {
+			return nil, err
 		}
 
-		return e.([]*collect.Request),nil
+		return e.([]*collect.Request), nil
 	}
 
-	for _,r := range m.Rules {
-		parseFunc := func(parse string) func(ctx *collect.CrawlerContext) (collect.ParseResult,error) {
+	for _, r := range m.Rules {
+		parseFunc := func(parse string) func(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 			return func(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 				vm := otto.New()
-				vm.Set("ctx",ctx)
-				v,err := vm.Eval(parse)
-				if err != nil { 
-					return collect.ParseResult{},err
+				vm.Set("ctx", ctx)
+				v, err := vm.Eval(parse)
+				if err != nil {
+					return collect.ParseResult{}, err
 				}
-				e,err := v.Export()
-				if err != nil { 
-					return collect.ParseResult{},err
+				e, err := v.Export()
+				if err != nil {
+					return collect.ParseResult{}, err
 				}
 				if e == nil {
-					return collect.ParseResult{},err
+					return collect.ParseResult{}, err
 				}
 
-				return e.(collect.ParseResult),err
+				return e.(collect.ParseResult), err
 			}
 		}(r.ParseFunc)
 		if task.Rule.Trunk == nil {
@@ -79,19 +79,20 @@ func (c *CrawlerStore) AddJSTask(m *collect.TaskMode){
 	c.list = append(c.list, task)
 
 }
+
 // AddJSReqs  动态规则添加请求
 func AddJSReqs(jreqs []map[string]any) []*collect.Request {
-	reqs := make([]*collect.Request,0)
-	for _,v := range jreqs {
+	reqs := make([]*collect.Request, 0)
+	for _, v := range jreqs {
 		req := &collect.Request{}
-		u,ok := v["Url"].(string)
+		u, ok := v["Url"].(string)
 		if !ok {
 			return nil
 		}
 		req.Url = u
-		req.RuleName,_ = v["RuleName"].(string)
-		req.Method,_ = v["Method"].(string)
-		req.Priority,_ = v["Priority"].(int)
+		req.RuleName, _ = v["RuleName"].(string)
+		req.Method, _ = v["Method"].(string)
+		req.Priority, _ = v["Priority"].(int)
 		reqs = append(reqs, req)
 	}
 
@@ -99,18 +100,17 @@ func AddJSReqs(jreqs []map[string]any) []*collect.Request {
 }
 
 func AddJSReq(jreq map[string]any) []*collect.Request {
-	reqs := make([]*collect.Request,0)
+	reqs := make([]*collect.Request, 0)
 	req := &collect.Request{}
-	u,ok := jreq["Url"].(string)
+	u, ok := jreq["Url"].(string)
 	if !ok {
 		return nil
 	}
 	req.Url = u
-	req.RuleName,_ = jreq["RuleName"].(string)
-	req.Method,_ = jreq["Method"].(string)
-	req.Priority,_ = jreq["Priority"].(int)
+	req.RuleName, _ = jreq["RuleName"].(string)
+	req.Method, _ = jreq["Method"].(string)
+	req.Priority, _ = jreq["Priority"].(int)
 	reqs = append(reqs, req)
-	
+
 	return reqs
 }
-
