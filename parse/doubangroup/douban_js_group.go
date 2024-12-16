@@ -18,7 +18,7 @@ var DouBanGroupJSTask = &collect.TaskMode{
 		{
 			Name: "解析网站URL",
 			ParseFunc: `
-				ctx.ParseJSReg("解析阳台房","https://www.douban.com/group/topic/[0-9a-z]+/)\"[^>]*>([^<]+)</a>");
+				ctx.ParseJSReg("解析阳台房","https://www.douban.com/group/topic/[0-9a-z]+/)\"[^>]*>([^<]+)</a>")";
 			`,
 		},
 		{
@@ -43,6 +43,6 @@ var rootJs = `
 		}
 		arr.push(obj);
 		console.log(obj.Url);
-		AddJSReq(arr);
 	}
+	AddJSReqs(arr);
 `

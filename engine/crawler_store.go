@@ -31,10 +31,10 @@ func (c *CrawlerStore) AddJSTask(m *collect.TaskMode) {
 	task := &collect.Task{
 		Propety: m.Propety,
 	}
+
 	task.Rule.Root = func() ([]*collect.Request, error) {
-		// js动态虚拟机
 		vm := otto.New()
-		vm.Set("AddJSReq", AddJSReq)
+		vm.Set("AddJSReqs", AddJSReqs)
 		v, err := vm.Eval(m.Root)
 		if err != nil {
 			return nil, err
@@ -43,7 +43,6 @@ func (c *CrawlerStore) AddJSTask(m *collect.TaskMode) {
 		if err != nil {
 			return nil, err
 		}
-
 		return e.([]*collect.Request), nil
 	}
 
@@ -63,12 +62,11 @@ func (c *CrawlerStore) AddJSTask(m *collect.TaskMode) {
 				if e == nil {
 					return collect.ParseResult{}, err
 				}
-
 				return e.(collect.ParseResult), err
 			}
 		}(r.ParseFunc)
 		if task.Rule.Trunk == nil {
-			task.Rule.Trunk = make(map[string]*collect.Rule)
+			task.Rule.Trunk = make(map[string]*collect.Rule, 0)
 		}
 		task.Rule.Trunk[r.Name] = &collect.Rule{
 			ParseFunc: parseFunc,
@@ -82,7 +80,7 @@ func (c *CrawlerStore) AddJSTask(m *collect.TaskMode) {
 
 // AddJSReqs  动态规则添加请求
 func AddJSReqs(jreqs []map[string]any) []*collect.Request {
-	reqs := make([]*collect.Request, 0)
+	reqs := make([]*collect.Request, 0, len(jreqs))
 	for _, v := range jreqs {
 		req := &collect.Request{}
 		u, ok := v["Url"].(string)
@@ -111,6 +109,5 @@ func AddJSReq(jreq map[string]any) []*collect.Request {
 	req.Method, _ = jreq["Method"].(string)
 	req.Priority, _ = jreq["Priority"].(int)
 	reqs = append(reqs, req)
-
 	return reqs
 }

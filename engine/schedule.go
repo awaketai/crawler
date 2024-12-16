@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"fmt"
-
 	"github.com/awaketai/crawler/collect"
 	"go.uber.org/zap"
 )
@@ -63,14 +61,12 @@ func (s *Schedule) Schedule() {
 		}
 		select {
 		case r := <-s.requestCh:
-			fmt.Println("req ch:", r.RuleName, r.Task.Name)
 			if r.Priority > 0 {
 				s.priReqQueue = append(s.priReqQueue, r)
 			} else {
 				s.reqQueue = append(s.reqQueue, r)
 			}
 		case ch <- req:
-			fmt.Println("ch received req:", req)
 			req = nil
 			ch = nil
 		}

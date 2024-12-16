@@ -28,6 +28,7 @@ func NewCrawler(opts ...Option) *Crawler {
 		out:         make(chan collect.ParseResult),
 		Visited:     map[string]bool{},
 		VisitedLock: sync.Mutex{},
+		failures:    map[string]*collect.Request{},
 	}
 	c.options = options
 
@@ -43,7 +44,7 @@ func (c *Crawler) Run() {
 }
 
 func (c *Crawler) Schedule() {
-	var reqs []*collect.Request
+	var reqs = make([]*collect.Request, 0, len(c.Seeds))
 	for _, seed := range c.Seeds {
 		// 获取初始化任务
 		task := Store.hash[seed.Name]
@@ -70,7 +71,6 @@ func (c *Crawler) Schedule() {
 func (c *Crawler) CreateWork() {
 	for {
 		r := c.scheduler.Pull()
-		fmt.Printf("gr req:%+v\n", r)
 		if err := r.Check(); err != nil {
 			c.Logger.Error("check failed", zap.Error(err))
 			continue
