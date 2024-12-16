@@ -1,0 +1,1 @@
+/usr/local/go1.23.2/bin/go run main/main.go

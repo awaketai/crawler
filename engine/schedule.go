@@ -63,6 +63,7 @@ func (s *Schedule) Schedule() {
 		}
 		select {
 		case r := <-s.requestCh:
+			fmt.Println("req ch:", r.RuleName, r.Task.Name)
 			if r.Priority > 0 {
 				s.priReqQueue = append(s.priReqQueue, r)
 			} else {

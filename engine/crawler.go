@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/awaketai/crawler/collect"
 	"go.uber.org/zap"
@@ -109,13 +110,17 @@ func (c *Crawler) CreateWork() {
 	}
 }
 
+// HandleResult 如何没有数据，直接循环会导致dead lock
+// 此处使用select {}规避
 func (c *Crawler) HandleResult() {
-	for res := range c.out {
-		fmt.Printf("--res:%v\n", res)
-		// for _, item := range res.Items {
-		// 	// to do store
-		// 	c.Logger.Sugar().Info("get res:", item)
-		// }
+	for {
+		select {
+		case res := <-c.out:
+			fmt.Println("res:", res)
+			// 防止cpu空转，避免忙等
+		case <-time.After(10 * time.Second):
+			fmt.Println("c.out no data")
+		}
 	}
 }
 
