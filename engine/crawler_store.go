@@ -9,6 +9,7 @@ import (
 func init() {
 	Store.Add(doubangroup.DouBanGroupTask)
 	Store.AddJSTask(doubangroup.DouBanGroupJSTask)
+	Store.Add(doubangroup.DoubanBookTask)
 }
 
 // Store 全局爬虫任务实例

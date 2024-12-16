@@ -31,7 +31,7 @@ func multiWorkDouban() {
 	}
 	seeds = append(seeds, &collect.Task{
 		Propety: collect.Propety{
-			Name: "js_find_douban_sun_room",
+			Name: "douban_book_list",
 		},
 		Fetcher: f,
 	})

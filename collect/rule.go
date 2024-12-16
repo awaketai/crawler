@@ -14,6 +14,7 @@ type RuleTree struct {
 }
 
 type Rule struct {
+	ItemFields []string
 	ParseFunc func(*CrawlerContext) (ParseResult,error)
 }
 

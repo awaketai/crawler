@@ -116,7 +116,9 @@ func (c *Crawler) HandleResult() {
 	for {
 		select {
 		case res := <-c.out:
-			fmt.Println("res:", res)
+			for _, v := range res.Items {
+				fmt.Println("res:", v)
+			}
 			// 防止cpu空转，避免忙等
 		case <-time.After(10 * time.Second):
 			fmt.Println("c.out no data")

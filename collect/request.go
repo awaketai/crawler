@@ -52,6 +52,7 @@ type Request struct {
 	Priority  int
 	ParseFunc func([]byte, *Request) ParseResult
 	RuleName  string
+	TmpData *Tmp
 }
 
 type ParseResult struct {
