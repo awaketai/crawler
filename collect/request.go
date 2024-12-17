@@ -6,6 +6,9 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/awaketai/crawler/collector"
+	"go.uber.org/zap"
 )
 
 type Propety struct {
@@ -22,7 +25,7 @@ type Propety struct {
 type Task struct {
 	Propety
 	// RootReq 第一个请求
-	RootReq     *Request
+	// RootReq     *Request
 	Fetcher     Fetcher
 	Visited     map[string]bool
 	VisitedLock sync.Mutex
@@ -30,6 +33,8 @@ type Task struct {
 	Reload bool
 	// Rule 当前任务规则
 	Rule RuleTree
+	Storage collector.Storager
+	Logger *zap.Logger
 }
 
 // TaskMode 动态规则模型

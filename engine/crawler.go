@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/awaketai/crawler/collect"
+	"github.com/awaketai/crawler/collector"
 	"go.uber.org/zap"
 )
 
@@ -53,6 +54,8 @@ func (c *Crawler) Schedule() {
 			continue
 		}
 		task.Fetcher = seed.Fetcher
+		task.Storage = seed.Storage
+		task.Logger = seed.Logger
 		rootReqs, err := task.Rule.Root()
 		if err != nil {
 			c.Logger.Error("task rule root err:", zap.String("seed_name", seed.Name), zap.Error(err))
@@ -116,8 +119,14 @@ func (c *Crawler) HandleResult() {
 	for {
 		select {
 		case res := <-c.out:
-			for _, v := range res.Items {
-				fmt.Println("res:", v)
+			for _, item := range res.Items {
+				// 数据存储
+				switch d := item.(type) {
+				case *collector.DataCell:
+					name := d.GetTaskName()
+					task := Store.hash[name]
+					task.Storage.Save(d)
+				}
 			}
 			// 防止cpu空转，避免忙等
 		case <-time.After(10 * time.Second):

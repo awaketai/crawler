@@ -13,7 +13,7 @@ var DouBanGroupTask = &collect.Task{
 		Name:     "find_douban_sun_room",
 		WaitTime: 1 * time.Second,
 		MaxDepth: 5,
-		Cookie:   "",
+		Cookie:   cookie,
 	},
 	Rule: collect.RuleTree{
 		Root: func() ([]*collect.Request, error) {

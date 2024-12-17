@@ -50,6 +50,10 @@ var DoubanBookTask = &collect.Task{
 	},
 }
 
+//	<li>
+//
+// <a href="/tag/小说" class="tag">小说</a>
+// </li>
 const regexpStr = `<a href="([^"]+)" class="tag">([^<]+)</a>`
 
 func parseTag(ctx *collect.CrawlerContext) (collect.ParseResult, error) {

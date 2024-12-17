@@ -3,6 +3,8 @@ package collect
 import (
 	"regexp"
 	"time"
+
+	"github.com/awaketai/crawler/collector"
 )
 
 // RuleTree 采集规则树
@@ -36,10 +38,12 @@ func (c *CrawlerContext) GetRule(ruleName string) *Rule {
 	return c.Req.Task.Rule.Trunk[ruleName]
 }
 
-func (c *CrawlerContext) Output(data any) *OutputData {
-	res := &OutputData{
+func (c *CrawlerContext) Output(data any) *collector.DataCell {
+	res := &collector.DataCell{
 		Data: map[string]any{},
 	}
+	
+	res.Data["Task"] = c.Req.Task.Name
 	res.Data["Rule"] = c.Req.RuleName
 	res.Data["Data"] = data
 	res.Data["Url"] = c.Req.Url
