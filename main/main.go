@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/awaketai/crawler/collect"
+	"github.com/awaketai/crawler/collector"
+	"github.com/awaketai/crawler/collector/sqlstorage"
 	"github.com/awaketai/crawler/engine"
 	log2 "github.com/awaketai/crawler/log"
 	"github.com/awaketai/crawler/proxy"
@@ -29,11 +31,22 @@ func multiWorkDouban() {
 		Logger:  logger,
 		Proxy:   p,
 	}
+	var storage collector.Storager
+	storage, err = sqlstorage.NewSqlStore(
+		sqlstorage.WithDSN("root:admin123@tcp(127.0.0.1:3306)/test?charset=utf8"),
+		sqlstorage.WithLogger(logger.Named("sqlDB")),
+		sqlstorage.WithBatchCount(2),
+	)
+	if err != nil {
+		logger.Error("create sql storage failed", zap.Error(err))
+		return
+	}
 	seeds = append(seeds, &collect.Task{
 		Propety: collect.Propety{
 			Name: "douban_book_list",
 		},
 		Fetcher: f,
+		Storage: storage,
 	})
 
 	s := engine.NewCrawler(

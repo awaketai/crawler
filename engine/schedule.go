@@ -77,3 +77,7 @@ func (s *Schedule) Schedule() {
 // 1.用什么数据结构存储数据才能保证快速地查找到请求的记录：哈希表
 // 2.如何保证并发查找与写入时，不出现并发冲突问题：加入互扩锁
 // 3.在什么条件下，我们才能确认请求是重复的，从而停止爬取
+
+func GetFields(taskName,ruleName string) []string {
+	return Store.hash[taskName].Rule.Trunk[ruleName].ItemFields
+}

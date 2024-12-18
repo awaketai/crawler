@@ -121,6 +121,7 @@ func (c *Crawler) HandleResult() {
 		case res := <-c.out:
 			for _, item := range res.Items {
 				// 数据存储
+				c.Logger.Info("item:", zap.Any("item", item))
 				switch d := item.(type) {
 				case *collector.DataCell:
 					name := d.GetTaskName()
