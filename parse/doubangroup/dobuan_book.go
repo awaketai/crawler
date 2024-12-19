@@ -1,6 +1,7 @@
 package doubangroup
 
 import (
+	"os"
 	"regexp"
 	"strconv"
 	"time"
@@ -17,12 +18,17 @@ var DoubanBookTask = &collect.Task{
 	},
 	Rule: collect.RuleTree{
 		Root: func() ([]*collect.Request, error) {
+			content, err := os.ReadFile("testhtml/index.html")
+			if err != nil {
+				return nil, err
+			}
 			roots := []*collect.Request{
 				{
 					Priority: 1,
 					Url:      "https://book.douban.com",
 					Method:   "GET",
 					RuleName: "数据tag",
+					TestBody: content,
 				},
 			}
 			return roots, nil
@@ -31,7 +37,7 @@ var DoubanBookTask = &collect.Task{
 			"数据tag": {
 				ParseFunc: parseTag,
 			},
-			"书籍列表": &collect.Rule{
+			"书籍列表": {
 				ParseFunc: parseBookList,
 			},
 			"书籍简介": {
@@ -60,6 +66,10 @@ func parseTag(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 	re := regexp.MustCompile(regexpStr)
 	matches := re.FindAllSubmatch(ctx.Body, -1)
 	result := collect.ParseResult{}
+	tagListContent, err := os.ReadFile("testhtml/fiction_tag.html")
+	if err != nil {
+		return result, err
+	}
 	for _, m := range matches {
 		result.Requests = append(result.Requests, &collect.Request{
 			Url:      "https://book.douban.com" + string(m[1]),
@@ -67,6 +77,7 @@ func parseTag(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 			Method:   "GET",
 			RuleName: "书籍列表",
 			Task:     ctx.Req.Task,
+			TestBody: tagListContent,
 		})
 	}
 	// 减少抓取数量，防止被封
@@ -82,6 +93,10 @@ func parseBookList(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 	re := regexp.MustCompile(BooklistRe)
 	matches := re.FindAllSubmatch(ctx.Body, -1)
 	result := collect.ParseResult{}
+	detailContent, err := os.ReadFile("testhtml/book_detail.html")
+	if err != nil {
+		return result, err
+	}
 	for _, m := range matches {
 		req := &collect.Request{
 			Method:   "GET",
@@ -89,6 +104,7 @@ func parseBookList(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 			Url:      string(m[1]),
 			Depth:    ctx.Req.Depth + 1,
 			RuleName: "书籍简介",
+			TestBody: detailContent,
 		}
 		req.TmpData = &collect.Tmp{}
 		req.TmpData.Set("book_name", string(m[2]))
@@ -101,8 +117,8 @@ func parseBookList(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 	return result, nil
 }
 
-var autoRe = regexp.MustCompile(`<span class="pl"> 作者</span>:[\d\D]*?<a.*?>([^<]+)</a>`)
-var public = regexp.MustCompile(`<span class="pl">出版社:</span>([^<]+)<br/>`)
+var autoRe = regexp.MustCompile(`<span class="pl"> 作者</span>:[\s\S]*?<a.*?>([^<]+)</a>`)
+var publicRe = regexp.MustCompile(`<span class="pl">出版社:</span>\s*<a.*?>([^<]+)</a>`)
 var pageRe = regexp.MustCompile(`<span class="pl">页数:</span> ([^<]+)<br/>`)
 var priceRe = regexp.MustCompile(`<span class="pl">定价:</span>([^<]+)<br/>`)
 var scoreRe = regexp.MustCompile(`<strong class="ll rating_num " property="v:average">([^<]+)</strong>`)
@@ -115,9 +131,10 @@ func parseBookDetail(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 		"书名":  bookName,
 		"作者":  ExtraString(ctx.Body, autoRe),
 		"页数":  page,
-		"出版社": ExtraString(ctx.Body, public),
+		"出版社": ExtraString(ctx.Body, publicRe),
 		"得分":  ExtraString(ctx.Body, scoreRe),
-		"价格":  ExtraString(ctx.Body, intoRe),
+		"价格":  ExtraString(ctx.Body, priceRe),
+		"简介":  ExtraString(ctx.Body, intoRe),
 	}
 	data := ctx.Output(book)
 	result := collect.ParseResult{
@@ -129,7 +146,7 @@ func parseBookDetail(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 
 func ExtraString(con []byte, re *regexp.Regexp) string {
 	match := re.FindSubmatch(con)
-	if len(match) > 2 {
+	if len(match) >= 2 {
 		return string(match[1])
 	}
 

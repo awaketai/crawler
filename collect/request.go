@@ -58,6 +58,8 @@ type Request struct {
 	ParseFunc func([]byte, *Request) ParseResult
 	RuleName  string
 	TmpData *Tmp
+	// TestBody 测试用
+	TestBody []byte
 }
 
 type ParseResult struct {

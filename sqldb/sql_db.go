@@ -92,7 +92,7 @@ func (s *SqlDB) Insert(t TableData) error {
 		sql += v.Title + ","
 	}
 	sql = sql[:len(sql)-1] + `) VALUES `
-	blank := ",(" + strings.Repeat(".?", len(t.ColumnNames))[1:] + ")"
+	blank := ",(" + strings.Repeat(",?", len(t.ColumnNames))[1:] + ")"
 	sql += strings.Repeat(blank, t.DataCount)[1:] + `;`
 	s.logger.Debug("insert table", zap.String("sql", sql))
 	_, err := s.db.Exec(sql, t.Args...)

@@ -84,12 +84,22 @@ func (c *Crawler) CreateWork() {
 			continue
 		}
 		c.StoreVisited(r)
-		body, err := r.Task.Fetcher.Get(r)
-		if err != nil {
-			c.Logger.Error("fetch failed", zap.Error(err))
-			c.SetFailure(r)
-			continue
+		var (
+			body []byte
+			err  error
+		)
+		if len(r.TestBody) > 0 {
+			body = r.TestBody
+		} else {
+			c.Logger.Info("fetching", zap.String("url", r.Url))
+			body, err = r.Task.Fetcher.Get(r)
+			if err != nil {
+				c.Logger.Error("fetch failed", zap.Error(err))
+				c.SetFailure(r)
+				continue
+			}
 		}
+
 		if len(body) < 6000 {
 			c.Logger.Error("fetch body too short",
 				zap.Int("length", len(body)),
@@ -126,7 +136,11 @@ func (c *Crawler) HandleResult() {
 				case *collector.DataCell:
 					name := d.GetTaskName()
 					task := Store.hash[name]
-					task.Storage.Save(d)
+					c.Logger.Info("data cell:", zap.String("task", name), zap.Any("data", d))
+					err := task.Storage.Save(d)
+					if err != nil {
+						c.Logger.Error("storage save failed", zap.Error(err))
+					}
 				}
 			}
 			// 防止cpu空转，避免忙等

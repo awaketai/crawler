@@ -35,7 +35,7 @@ func multiWorkDouban() {
 	storage, err = sqlstorage.NewSqlStore(
 		sqlstorage.WithDSN("root:admin123@tcp(127.0.0.1:3306)/test?charset=utf8"),
 		sqlstorage.WithLogger(logger.Named("sqlDB")),
-		sqlstorage.WithBatchCount(2),
+		sqlstorage.WithBatchCount(1),
 	)
 	if err != nil {
 		logger.Error("create sql storage failed", zap.Error(err))
