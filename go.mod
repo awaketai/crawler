@@ -31,5 +31,6 @@ require (
 	github.com/stretchr/testify v1.8.4 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/sys v0.12.0 // indirect
+	golang.org/x/time v0.8.0 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )

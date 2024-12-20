@@ -3,7 +3,6 @@ package doubangroup
 import (
 	"fmt"
 	"regexp"
-	"time"
 
 	"github.com/awaketai/crawler/collect"
 )
@@ -11,7 +10,7 @@ import (
 var DouBanGroupTask = &collect.Task{
 	Propety: collect.Propety{
 		Name:     "find_douban_sun_room",
-		WaitTime: 1 * time.Second,
+		WaitTime: 1,
 		MaxDepth: 5,
 		Cookie:   cookie,
 	},

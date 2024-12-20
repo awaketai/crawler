@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,7 +57,8 @@ func (c *Crawler) Schedule() {
 		}
 		task.Fetcher = seed.Fetcher
 		task.Storage = seed.Storage
-		task.Logger = seed.Logger
+		task.Logger = c.Logger
+		task.Limit = seed.Limit
 		rootReqs, err := task.Rule.Root()
 		if err != nil {
 			c.Logger.Error("task rule root err:", zap.String("seed_name", seed.Name), zap.Error(err))
@@ -88,16 +91,22 @@ func (c *Crawler) CreateWork() {
 			body []byte
 			err  error
 		)
-		if len(r.TestBody) > 0 {
+		if r.Test && len(r.TestBody) > 0 {
 			body = r.TestBody
 		} else {
 			c.Logger.Info("fetching", zap.String("url", r.Url))
-			body, err = r.Task.Fetcher.Get(r)
+			body, err = r.Fetch(context.Background())
 			if err != nil {
 				c.Logger.Error("fetch failed", zap.Error(err))
 				c.SetFailure(r)
 				continue
 			}
+		}
+		strBody := string(body)
+		if strings.Contains(strBody, "你访问豆瓣的方式有点像机器人程序") {
+			c.Logger.Error("fetch be banned", zap.String("url", r.Url))
+			c.SetFailure(r)
+			continue
 		}
 
 		if len(body) < 6000 {

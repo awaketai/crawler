@@ -1,13 +1,16 @@
 package collect
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
+	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/awaketai/crawler/collector"
+	"github.com/awaketai/crawler/limiter"
 	"go.uber.org/zap"
 )
 
@@ -16,8 +19,8 @@ type Propety struct {
 	Url    string `json:"url"`
 	Cookie string `json:"cookie"`
 	// WaitTime每个请求等待多长时间
-	WaitTime time.Duration `json:"wait_time"`
-	Reload   bool          `json:"reload"`
+	WaitTime int64 `json:"wait_time"`
+	Reload   bool  `json:"reload"`
 	// 爬取的最大深度
 	MaxDepth int `json:"max_depth"`
 }
@@ -32,9 +35,11 @@ type Task struct {
 	// Reload 网站是否可以重复爬取
 	Reload bool
 	// Rule 当前任务规则
-	Rule RuleTree
+	Rule    RuleTree
 	Storage collector.Storager
-	Logger *zap.Logger
+	Logger  *zap.Logger
+	// RateLimiter 令牌桶限速
+	Limit limiter.RateLimiter
 }
 
 // TaskMode 动态规则模型
@@ -57,9 +62,10 @@ type Request struct {
 	Priority  int
 	ParseFunc func([]byte, *Request) ParseResult
 	RuleName  string
-	TmpData *Tmp
+	TmpData   *Tmp
 	// TestBody 测试用
 	TestBody []byte
+	Test     bool
 }
 
 type ParseResult struct {
@@ -78,4 +84,15 @@ func (r *Request) Check() error {
 func (r *Request) Unique() string {
 	block := md5.Sum([]byte(r.Url + r.Method))
 	return hex.EncodeToString(block[:])
+}
+
+func (r *Request) Fetch(ctx context.Context) ([]byte, error) {
+	if err := r.Task.Limit.Wait(ctx); err != nil {
+		return nil, err
+	}
+	// 随机休眠
+	sleepTime := rand.Int63n(r.Task.WaitTime * 1000)
+	time.Sleep(time.Duration(sleepTime) * time.Millisecond)
+
+	return r.Task.Fetcher.Get(r)
 }

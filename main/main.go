@@ -7,10 +7,12 @@ import (
 	"github.com/awaketai/crawler/collector"
 	"github.com/awaketai/crawler/collector/sqlstorage"
 	"github.com/awaketai/crawler/engine"
+	"github.com/awaketai/crawler/limiter"
 	log2 "github.com/awaketai/crawler/log"
 	"github.com/awaketai/crawler/proxy"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/time/rate"
 )
 
 func main() {
@@ -41,12 +43,19 @@ func multiWorkDouban() {
 		logger.Error("create sql storage failed", zap.Error(err))
 		return
 	}
+	// 限速
+	// 2秒钟一个
+	secondLimit := rate.NewLimiter(limiter.Per(1, 2*time.Second), 1)
+	// 60秒20个
+	minuteLimie := rate.NewLimiter(limiter.Per(20, 1*time.Minute), 20)
+	multiLimiter := limiter.NewMultiLimit(secondLimit, minuteLimie)
 	seeds = append(seeds, &collect.Task{
 		Propety: collect.Propety{
 			Name: "douban_book_list",
 		},
 		Fetcher: f,
 		Storage: storage,
+		Limit:  multiLimiter,
 	})
 
 	s := engine.NewCrawler(

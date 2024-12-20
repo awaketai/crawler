@@ -4,7 +4,6 @@ import (
 	"os"
 	"regexp"
 	"strconv"
-	"time"
 
 	"github.com/awaketai/crawler/collect"
 )
@@ -12,7 +11,7 @@ import (
 var DoubanBookTask = &collect.Task{
 	Propety: collect.Propety{
 		Name:     "douban_book_list",
-		WaitTime: 1 * time.Second,
+		WaitTime: 1,
 		MaxDepth: 5,
 		Cookie:   cookie,
 	},
@@ -29,6 +28,7 @@ var DoubanBookTask = &collect.Task{
 					Method:   "GET",
 					RuleName: "数据tag",
 					TestBody: content,
+					Test:     false,
 				},
 			}
 			return roots, nil
@@ -78,11 +78,14 @@ func parseTag(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 			RuleName: "书籍列表",
 			Task:     ctx.Req.Task,
 			TestBody: tagListContent,
+			Test:     false,
 		})
 	}
 	// 减少抓取数量，防止被封
-	if len(result.Requests) > 0 {
-		result.Requests = result.Requests[:1]
+	l := len(result.Requests)
+	// 取三个
+	if l > 3 {
+		result.Requests = result.Requests[:3]
 	}
 	return result, nil
 }
@@ -110,8 +113,9 @@ func parseBookList(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 		req.TmpData.Set("book_name", string(m[2]))
 		result.Requests = append(result.Requests, req)
 	}
-	if len(result.Requests) > 0 {
-		result.Requests = result.Requests[:1]
+	l := len(result.Requests)
+	if l > 3 {
+		result.Requests = result.Requests[:3]
 	}
 
 	return result, nil
