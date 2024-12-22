@@ -16,9 +16,11 @@ import (
 	log2 "github.com/awaketai/crawler/log"
 	"github.com/awaketai/crawler/proxy"
 	"github.com/awaketai/crawler/service"
+	etcdReg "github.com/go-micro/plugins/v4/registry/etcd"
 	gs "github.com/go-micro/plugins/v4/server/grpc"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"go-micro.dev/v4"
+	"go-micro.dev/v4/registry"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/time/rate"
@@ -81,10 +83,14 @@ func multiWorkDouban() {
 
 func HelloGTPC() {
 	go HandleHTTP()
+	reg := etcdReg.NewRegistry(
+		registry.Addrs(":2379"),
+	)
 	svc := micro.NewService(
 		micro.Server(gs.NewServer()),
 		micro.Address("localhost:50051"),
 		micro.Name("go.micro.server.worker"),
+		micro.Registry(reg),
 	)
 	svc.Init()
 	pb.RegisterGreeterHandler(svc.Server(), new(service.Greet))
