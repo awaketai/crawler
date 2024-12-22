@@ -1,22 +1,33 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
 	"time"
 
 	"github.com/awaketai/crawler/collect"
 	"github.com/awaketai/crawler/collector"
 	"github.com/awaketai/crawler/collector/sqlstorage"
 	"github.com/awaketai/crawler/engine"
+	pb "github.com/awaketai/crawler/goout/hello"
 	"github.com/awaketai/crawler/limiter"
 	log2 "github.com/awaketai/crawler/log"
 	"github.com/awaketai/crawler/proxy"
+	"github.com/awaketai/crawler/service"
+	gs "github.com/go-micro/plugins/v4/server/grpc"
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"go-micro.dev/v4"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc"
 )
 
 func main() {
-	multiWorkDouban()
+	// multiWorkDouban()
+	HelloGTPC()
 }
 
 func multiWorkDouban() {
@@ -55,7 +66,7 @@ func multiWorkDouban() {
 		},
 		Fetcher: f,
 		Storage: storage,
-		Limit:  multiLimiter,
+		Limit:   multiLimiter,
 	})
 
 	s := engine.NewCrawler(
@@ -66,4 +77,31 @@ func multiWorkDouban() {
 		engine.WithScheduler(engine.NewSchedule()),
 	)
 	s.Run()
+}
+
+func HelloGTPC() {
+	go HandleHTTP()
+	svc := micro.NewService(
+		micro.Server(gs.NewServer()),
+		micro.Address("localhost:50051"),
+		micro.Name("go.micro.server.worker"),
+	)
+	svc.Init()
+	pb.RegisterGreeterHandler(svc.Server(), new(service.Greet))
+	if err := svc.Run(); err != nil {
+		fmt.Println(err)
+	}
+}
+
+func HandleHTTP() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mux := runtime.NewServeMux()
+	opts := []grpc.DialOption{grpc.WithInsecure()}
+	err := pb.RegisterGreeterGwFromEndpoint(ctx, mux, "localhost:50051", opts)
+	if err != nil {
+		log.Fatalf("register http failed:%v", err)
+	}
+
+	log.Fatal(http.ListenAndServe(":8080", mux))
 }
