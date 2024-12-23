@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	log2 "github.com/awaketai/crawler/log"
 	"github.com/awaketai/crawler/proxy"
 	"github.com/awaketai/crawler/service"
+	grpccli "github.com/go-micro/plugins/v4/client/grpc"
 	etcdReg "github.com/go-micro/plugins/v4/registry/etcd"
 	gs "github.com/go-micro/plugins/v4/server/grpc"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
@@ -94,6 +96,12 @@ func HelloGTPC() {
 	)
 	svc.Init()
 	pb.RegisterGreeterHandler(svc.Server(), new(service.Greet))
+	ticker := time.NewTicker(5 * time.Second)
+	go func() {
+		for range ticker.C {
+			reqGRPC()
+		}
+	}()
 	if err := svc.Run(); err != nil {
 		fmt.Println(err)
 	}
@@ -110,4 +118,38 @@ func HandleHTTP() {
 	}
 
 	log.Fatal(http.ListenAndServe(":8080", mux))
+}
+
+func generateRandomString(minLen, maxLen int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	rand.Seed(time.Now().UnixNano())
+	length := rand.Intn(maxLen-minLen+1) + minLen
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func reqGRPC() {
+	reg := etcdReg.NewRegistry(
+		registry.Addrs(":2379"),
+	)
+	svc := micro.NewService(
+		micro.Registry(reg),
+		micro.Client(grpccli.NewClient()),
+	)
+	svc.Init()
+
+	cli := pb.NewGreeterService("go.micro.server.worker", svc.Client())
+	// make grpc request
+	// generate a random string
+
+	rsp, err := cli.Hello(context.Background(), &pb.Request{
+		Name: generateRandomString(3, 12),
+	})
+	if err != nil {
+		fmt.Println("grpc req err:", err)
+	}
+	fmt.Println("grpc resp:", rsp.Greeting)
 }
