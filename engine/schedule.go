@@ -47,6 +47,7 @@ func (s *Schedule) Schedule() {
 		req *collect.Request
 		ch  chan *collect.Request
 	)
+	
 	for {
 		if req == nil && len(s.priReqQueue) > 0 {
 			// 先执行优先队列中的任务
@@ -79,5 +80,6 @@ func (s *Schedule) Schedule() {
 // 3.在什么条件下，我们才能确认请求是重复的，从而停止爬取
 
 func GetFields(taskName,ruleName string) []string {
+
 	return Store.hash[taskName].Rule.Trunk[ruleName].ItemFields
 }

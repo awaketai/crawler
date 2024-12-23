@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"fmt"
+
 	"github.com/awaketai/crawler/collect"
 	"github.com/awaketai/crawler/parse/doubangroup"
 	"github.com/robertkrimen/otto"
@@ -35,7 +37,10 @@ func (c *CrawlerStore) AddJSTask(m *collect.TaskMode) {
 
 	task.Rule.Root = func() ([]*collect.Request, error) {
 		vm := otto.New()
-		vm.Set("AddJSReqs", AddJSReqs)
+		err := vm.Set("AddJSReqs", AddJSReqs)
+		if err != nil {
+			return nil, fmt.Errorf("set AddJSReqs err:%w", err)
+		}
 		v, err := vm.Eval(m.Root)
 		if err != nil {
 			return nil, err
@@ -51,7 +56,10 @@ func (c *CrawlerStore) AddJSTask(m *collect.TaskMode) {
 		parseFunc := func(parse string) func(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 			return func(ctx *collect.CrawlerContext) (collect.ParseResult, error) {
 				vm := otto.New()
-				vm.Set("ctx", ctx)
+				err := vm.Set("ctx", ctx)
+				if err != nil {
+					return collect.ParseResult{}, fmt.Errorf("set ctx err:%w", err)
+				}
 				v, err := vm.Eval(parse)
 				if err != nil {
 					return collect.ParseResult{}, err

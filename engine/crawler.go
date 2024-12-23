@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -67,6 +66,7 @@ func (c *Crawler) Schedule() {
 		for _, req := range rootReqs {
 			req.Task = task
 		}
+
 		reqs = append(reqs, rootReqs...)
 	}
 
@@ -86,6 +86,7 @@ func (c *Crawler) CreateWork() {
 			c.Logger.Error("requested has visited", zap.String("url", r.Url))
 			continue
 		}
+		
 		c.StoreVisited(r)
 		var (
 			body []byte
@@ -154,7 +155,7 @@ func (c *Crawler) HandleResult() {
 			}
 			// 防止cpu空转，避免忙等
 		case <-time.After(10 * time.Second):
-			fmt.Println("c.out no data")
+			c.Logger.Info("no data")
 		}
 	}
 }

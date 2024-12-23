@@ -19,10 +19,16 @@ import (
 	"github.com/awaketai/crawler/proxy"
 	"github.com/awaketai/crawler/service"
 	grpccli "github.com/go-micro/plugins/v4/client/grpc"
+	"github.com/go-micro/plugins/v4/config/encoder/toml"
 	etcdReg "github.com/go-micro/plugins/v4/registry/etcd"
 	gs "github.com/go-micro/plugins/v4/server/grpc"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"go-micro.dev/v4"
+	"go-micro.dev/v4/config"
+	"go-micro.dev/v4/config/reader"
+	"go-micro.dev/v4/config/reader/json"
+	"go-micro.dev/v4/config/source"
+	"go-micro.dev/v4/config/source/file"
 	"go-micro.dev/v4/registry"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -31,9 +37,32 @@ import (
 )
 
 func main() {
-	// multiWorkDouban()
-	plugin := log2.NewStdoutPlugin(zapcore.InfoLevel)
+	enc := toml.NewEncoder()
+	cfg,err := config.NewConfig(
+		config.WithReader(json.NewReader(reader.WithEncoder(enc))),
+	)
+	if err != nil {
+		panic(err)
+	}
+	err = cfg.Load(file.NewSource(
+		file.WithPath("/Users/ashertai/wwwroot/distribute_crawler/config.toml"),
+		source.WithEncoder(enc),
+		))
+	if err != nil {
+		panic(err)
+	}
+	
+	logText := cfg.Get("logLevel").String("INFO")
+	logLevel,err := zapcore.ParseLevel(logText)
+	if err != nil {
+		panic(err)
+	}
+	plugin := log2.NewStdoutPlugin(logLevel)
 	logger := log2.NewLogger(plugin)
+	logger.Info("log inited")
+	zap.ReplaceGlobals(logger)
+	// multiWorkDouban()
+
 	RunGRPCServer(logger)
 }
 

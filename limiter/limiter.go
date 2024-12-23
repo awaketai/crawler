@@ -9,7 +9,7 @@ import (
 )
 
 type RateLimiter interface {
-	Wait(context.Context) error
+	Wait(ctx context.Context) error
 	Limit() rate.Limit
 }
 
@@ -22,6 +22,7 @@ func NewMultiLimit(limiters ...RateLimiter) *multiLimiter {
 		return limiters[i].Limit() < limiters[j].Limit()
 	}
 	sort.Slice(limiters, byLimit)
+
 	return &multiLimiter{limiters}
 }
 

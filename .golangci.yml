@@ -1,0 +1,39 @@
+run:
+    tests: false
+    --exclude-dirs:
+        - vendor
+        - goout
+        - config
+        - etcd-docker-deployment
+        - proto
+        - testhtml
+        - tmp
+
+linters-settings:
+    funlen:
+        # Checks the number of lines in a function.
+        # If lower than 0, disable the check.
+        # Default: 60
+        lines: 120
+        # Checks the number of statements in a function.
+        # If lower than 0, disable the check.
+        # Default: 40
+        statements: -1
+
+# list all linters by run `golangci-lint help linters`
+linters:
+    enable-all: true
+    disable:
+        # gochecknoglobals: Checks that no globals are present in Go code
+        - gochecknoglobals
+        # gochecknoinits: Checks that no init functions are present in Go code
+        - gochecknoinits
+        # Checks that errors returned from external packages are wrapped
+        - wrapcheck
+        # checks that the length of a variable's name matches its scope
+        - varnamelen
+        # Checks the struct tags.
+        - tagliatelle
+        # An analyzer to detect magic numbers.
+        - gomnd
+      

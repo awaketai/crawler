@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -10,12 +9,13 @@ import (
 
 type ProxyFunc func(*http.Request) (*url.URL, error)
 
-func RoundRobinProxySwitcher(ProxyURLs ...string) (ProxyFunc, error) {
-	if len(ProxyURLs) < 1 {
-		return nil, errors.New("Proxy URL list empty")
+func RoundRobinProxySwitcher(proxyURLs ...string) (ProxyFunc, error) {
+	if len(proxyURLs) < 1 {
+		return nil, fmt.Errorf("proxy URL list empty")
 	}
-	urls := make([]*url.URL, len(ProxyURLs))
-	for i, u := range ProxyURLs {
+	urls := make([]*url.URL, len(proxyURLs))
+
+	for i, u := range proxyURLs {
 		parsedU, err := url.Parse(u)
 		if err != nil {
 			return nil, err
@@ -31,9 +31,9 @@ type roundRobinSwitcher struct {
 	index     uint32
 }
 
-func (r *roundRobinSwitcher) GetPorxy(hr *http.Request) (*url.URL, error) {
-	fmt.Println("proxy url:", r.proxyURLs)
+func (r *roundRobinSwitcher) GetPorxy(_ *http.Request) (*url.URL, error) {
 	index := atomic.AddUint32(&r.index, 1) - 1
 	u := r.proxyURLs[index%uint32(len(r.proxyURLs))]
+
 	return u, nil
 }
