@@ -13,6 +13,7 @@ func DefaultEncoderConfig() zapcore.EncoderConfig {
 	return encoderConfig
 }
 
+// DefaultEncoder 默认使用json格式
 func DefaultEncoder() zapcore.Encoder {
 	return zapcore.NewJSONEncoder(DefaultEncoderConfig())
 }

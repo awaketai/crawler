@@ -15,6 +15,7 @@ import (
 	pb "github.com/awaketai/crawler/goout/hello"
 	"github.com/awaketai/crawler/limiter"
 	log2 "github.com/awaketai/crawler/log"
+	"github.com/awaketai/crawler/middleware"
 	"github.com/awaketai/crawler/proxy"
 	"github.com/awaketai/crawler/service"
 	grpccli "github.com/go-micro/plugins/v4/client/grpc"
@@ -31,7 +32,9 @@ import (
 
 func main() {
 	// multiWorkDouban()
-	HelloGTPC()
+	plugin := log2.NewStdoutPlugin(zapcore.InfoLevel)
+	logger := log2.NewLogger(plugin)
+	RunGRPCServer(logger)
 }
 
 func multiWorkDouban() {
@@ -83,7 +86,7 @@ func multiWorkDouban() {
 	s.Run()
 }
 
-func HelloGTPC() {
+func RunGRPCServer(logger *zap.Logger) {
 	go HandleHTTP()
 	reg := etcdReg.NewRegistry(
 		registry.Addrs(":2379"),
@@ -93,6 +96,7 @@ func HelloGTPC() {
 		micro.Address("localhost:50051"),
 		micro.Name("go.micro.server.worker"),
 		micro.Registry(reg),
+		micro.WrapHandler(middleware.LogWrapper(logger)),
 	)
 	svc.Init()
 	pb.RegisterGreeterHandler(svc.Server(), new(service.Greet))
