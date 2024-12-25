@@ -38,7 +38,7 @@ import (
 
 func main() {
 	enc := toml.NewEncoder()
-	cfg,err := config.NewConfig(
+	cfg, err := config.NewConfig(
 		config.WithReader(json.NewReader(reader.WithEncoder(enc))),
 	)
 	if err != nil {
@@ -47,13 +47,13 @@ func main() {
 	err = cfg.Load(file.NewSource(
 		file.WithPath("/Users/ashertai/wwwroot/distribute_crawler/config.toml"),
 		source.WithEncoder(enc),
-		))
+	))
 	if err != nil {
 		panic(err)
 	}
-	
+
 	logText := cfg.Get("logLevel").String("INFO")
-	logLevel,err := zapcore.ParseLevel(logText)
+	logLevel, err := zapcore.ParseLevel(logText)
 	if err != nil {
 		panic(err)
 	}
@@ -61,96 +61,129 @@ func main() {
 	logger := log2.NewLogger(plugin)
 	logger.Info("log inited")
 	zap.ReplaceGlobals(logger)
-	// multiWorkDouban()
+	// server config init
+	var serverCfg ServerConfig
+	err = cfg.Get("GRPCServer").Scan(&serverCfg)
+	if err != nil {
+		panic(err)
+	}
+	logger.Sugar().Debugf("serverCfg:%+v", serverCfg)
+	multiWorkDouban(cfg, logger)
 
-	RunGRPCServer(logger)
+	RunGRPCServer(logger, cfg)
 }
 
-func multiWorkDouban() {
-	plugin := log2.NewStdoutPlugin(zapcore.InfoLevel)
-	logger := log2.NewLogger(plugin)
-	var seeds = make([]*collect.Task, 0, 1000)
-	proxyURLs := []string{"http://127.0.0.1:4780"}
+type ServerConfig struct {
+	GRPCListenAddress string
+	HTTPListenAddress string
+	ID                string
+	RegistryAddress   string
+	RegisterTTL       int
+	RegisterInterval  int
+	Name              string
+	ClientTimeOut     int
+}
+
+func multiWorkDouban(cfg config.Config, logger *zap.Logger) {
+	fetcher := getFetcher(cfg, logger)
+	storage := getStorage(cfg, logger)
+	tasks, err := getSeeds(cfg, logger, fetcher, storage)
+	if err != nil {
+		panic("get seeds err:" + err.Error())
+	}
+
+	s := engine.NewCrawler(
+		engine.WithFetcher(fetcher),
+		engine.WithLogger(logger),
+		engine.WithTasks(tasks),
+		engine.WithWorkCount(5),
+		engine.WithScheduler(engine.NewSchedule()),
+	)
+	go s.Run()
+}
+
+func getProxy(cfg config.Config) (proxy.ProxyFunc, error) {
+	proxyURLs := cfg.Get("fetcher", "proxy").StringSlice([]string{})
 	p, err := proxy.RoundRobinProxySwitcher(proxyURLs...)
 	if err != nil {
-		logger.Error("RoundRobinProxySwitcher err:", zap.Error(err))
+		panic("RoundRobinProxySwitcher err:" + err.Error())
 	}
-	var f collect.Fetcher = &collect.BrowserFetch{
-		Timeout: 10 * time.Second,
+
+	return p, err
+}
+
+func getFetcher(cfg config.Config, logger *zap.Logger) collect.Fetcher {
+	p, err := getProxy(cfg)
+	if err != nil {
+		panic("getProxy err:" + err.Error())
+	}
+	timeout := cfg.Get("fetcher", "timeout").Int(3000)
+	fetcher := &collect.BrowserFetch{
+		Timeout: time.Duration(timeout) * time.Millisecond,
 		Logger:  logger,
 		Proxy:   p,
 	}
-	var storage collector.Storager
-	storage, err = sqlstorage.NewSqlStore(
-		sqlstorage.WithDSN("root:admin123@tcp(127.0.0.1:3306)/test?charset=utf8"),
+
+	return fetcher
+}
+
+func getStorage(cfg config.Config, logger *zap.Logger) collector.Storager {
+	dsn := cfg.Get("storage", "dsn").String("")
+	if dsn == "" {
+		panic("storage dsn is empty")
+	}
+	storage, err := sqlstorage.NewSqlStore(
+		sqlstorage.WithDSN(dsn),
 		sqlstorage.WithLogger(logger.Named("sqlDB")),
 		sqlstorage.WithBatchCount(1),
 	)
 	if err != nil {
-		logger.Error("create sql storage failed", zap.Error(err))
-		return
+		panic("create sql storage failed:" + err.Error())
 	}
-	// 限速
-	// 2秒钟一个
-	secondLimit := rate.NewLimiter(limiter.Per(1, 2*time.Second), 1)
-	// 60秒20个
-	minuteLimie := rate.NewLimiter(limiter.Per(20, 1*time.Minute), 20)
-	multiLimiter := limiter.NewMultiLimit(secondLimit, minuteLimie)
-	seeds = append(seeds, &collect.Task{
-		Propety: collect.Propety{
-			Name: "douban_book_list",
-		},
-		Fetcher: f,
-		Storage: storage,
-		Limit:   multiLimiter,
-	})
 
-	s := engine.NewCrawler(
-		engine.WithFetcher(f),
-		engine.WithLogger(logger),
-		engine.WithSeeds(seeds),
-		engine.WithWorkCount(5),
-		engine.WithScheduler(engine.NewSchedule()),
-	)
-	s.Run()
+	return storage
 }
 
-func RunGRPCServer(logger *zap.Logger) {
-	go HandleHTTP()
+func RunGRPCServer(logger *zap.Logger, cfg config.Config) {
+	// go HandleHTTP(cfg)
 	reg := etcdReg.NewRegistry(
-		registry.Addrs(":2379"),
+		registry.Addrs(cfg.Get("RegistryAddress").String(":2379")),
 	)
+	address := cfg.Get("GRPCServer", "GRPCListenAddress").String("localhost:50051")
+	name := cfg.Get("GRPCServer", "Name").String("go.micro.server.worker")
 	svc := micro.NewService(
 		micro.Server(gs.NewServer()),
-		micro.Address("localhost:50051"),
-		micro.Name("go.micro.server.worker"),
+		micro.Address(address),
+		micro.Name(name),
 		micro.Registry(reg),
 		micro.WrapHandler(middleware.LogWrapper(logger)),
 	)
 	svc.Init()
 	pb.RegisterGreeterHandler(svc.Server(), new(service.Greet))
-	ticker := time.NewTicker(5 * time.Second)
-	go func() {
-		for range ticker.C {
-			reqGRPC()
-		}
-	}()
+	// ticker := time.NewTicker(5 * time.Second)
+	// go func() {
+	// 	for range ticker.C {
+	// 		reqGRPC(cfg)
+	// 	}
+	// }()
 	if err := svc.Run(); err != nil {
 		fmt.Println(err)
 	}
 }
 
-func HandleHTTP() {
+func HandleHTTP(cfg config.Config) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	grpcAddr := cfg.Get("GRPCServer", "GRPCListenAddress").String("localhost:50051")
+	httpAddr := cfg.Get("GRPCServer", "HTTPListenAddress").String(":8080")
 	mux := runtime.NewServeMux()
 	opts := []grpc.DialOption{grpc.WithInsecure()}
-	err := pb.RegisterGreeterGwFromEndpoint(ctx, mux, "localhost:50051", opts)
+	err := pb.RegisterGreeterGwFromEndpoint(ctx, mux, grpcAddr, opts)
 	if err != nil {
 		log.Fatalf("register http failed:%v", err)
 	}
 
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Fatal(http.ListenAndServe(httpAddr, mux))
 }
 
 func generateRandomString(minLen, maxLen int) string {
@@ -164,9 +197,9 @@ func generateRandomString(minLen, maxLen int) string {
 	return string(b)
 }
 
-func reqGRPC() {
+func reqGRPC(cfg config.Config) {
 	reg := etcdReg.NewRegistry(
-		registry.Addrs(":2379"),
+		registry.Addrs(cfg.Get("RegistryAddress").String(":2379")),
 	)
 	svc := micro.NewService(
 		micro.Registry(reg),
@@ -185,4 +218,46 @@ func reqGRPC() {
 		fmt.Println("grpc req err:", err)
 	}
 	fmt.Println("grpc resp:", rsp.Greeting)
+}
+
+func getSeeds(cfg config.Config, logger *zap.Logger, fetcher collect.Fetcher, storage collector.Storager) ([]*collect.Task, error) {
+	var tcfg []collect.Options
+	if err := cfg.Get("Tasks").Scan(&tcfg); err != nil {
+		logger.Error("get tasks err", zap.Error(err))
+		return nil, err
+	}
+	tasks := make([]*collect.Task, 0, len(tcfg))
+	for _, v := range tcfg {
+		t := collect.NewTask(
+			collect.WithCookie(v.Cookie),
+			collect.WithFetcher(fetcher),
+			collect.WithLogger(logger),
+			collect.WithName(v.Name),
+			collect.WithReload(v.Reload),
+			collect.WithStorage(storage),
+			collect.WithUrl(v.Url),
+		)
+		if v.WaitTime > 0 {
+			t.WaitTime = v.WaitTime
+		}
+		if v.MaxDepth > 0 {
+			t.MaxDepth = v.MaxDepth
+		}
+		var limits []limiter.RateLimiter
+		if len(v.LimitCfg) > 0 {
+			for _, l := range v.LimitCfg {
+				lm := rate.NewLimiter(limiter.Per(l.EventCount, time.Duration(l.EventDur)*time.Second), 1)
+				limits = append(limits, lm)
+			}
+			multiLimiter := limiter.NewMultiLimit(limits...)
+			t.Limit = multiLimiter
+		}
+		switch v.FetchType {
+		case collect.BrowserFetchType:
+			t.Fetcher = fetcher
+		}
+		tasks = append(tasks, t)
+	}
+
+	return tasks, nil
 }

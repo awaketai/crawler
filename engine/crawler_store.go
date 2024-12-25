@@ -32,7 +32,7 @@ func (c *CrawlerStore) Add(task *collect.Task) {
 
 func (c *CrawlerStore) AddJSTask(m *collect.TaskMode) {
 	task := &collect.Task{
-		Propety: m.Propety,
+		Options: m.Options,
 	}
 
 	task.Rule.Root = func() ([]*collect.Request, error) {

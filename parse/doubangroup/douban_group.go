@@ -8,7 +8,7 @@ import (
 )
 
 var DouBanGroupTask = &collect.Task{
-	Propety: collect.Propety{
+	Options: collect.Options{
 		Name:     "find_douban_sun_room",
 		WaitTime: 1,
 		MaxDepth: 5,

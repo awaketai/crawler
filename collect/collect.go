@@ -16,6 +16,13 @@ import (
 	"golang.org/x/text/transform"
 )
 
+type FetchType string
+
+const (
+	BaseFetchType  FetchType = "base"
+	BrowserFetchType FetchType = "browser"
+)
+
 type Fetcher interface {
 	Get(*Request) ([]byte, error)
 }

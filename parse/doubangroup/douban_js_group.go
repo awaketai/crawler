@@ -5,7 +5,7 @@ import (
 )
 
 var DouBanGroupJSTask = &collect.TaskMode{
-	Propety: collect.Propety{
+	Options: collect.Options{
 		Name:     "js_find_douban_sun_room",
 		Cookie:   cookie,
 		WaitTime: 1,

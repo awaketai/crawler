@@ -86,7 +86,7 @@ func (c *Crawler) CreateWork() {
 			c.Logger.Error("requested has visited", zap.String("url", r.Url))
 			continue
 		}
-		
+
 		c.StoreVisited(r)
 		var (
 			body []byte

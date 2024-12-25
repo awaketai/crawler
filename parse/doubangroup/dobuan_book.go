@@ -9,7 +9,7 @@ import (
 )
 
 var DoubanBookTask = &collect.Task{
-	Propety: collect.Propety{
+	Options: collect.Options{
 		Name:     "douban_book_list",
 		WaitTime: 1,
 		MaxDepth: 5,
