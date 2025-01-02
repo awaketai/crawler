@@ -93,8 +93,14 @@ func (s *SqlStore) Flush() error {
 	}
 	args := make([]any, 0, len(s.dataDocker))
 	for _, dataCell := range s.dataDocker {
-		ruleName := dataCell.Data["Rule"].(string)
-		taskName := dataCell.Data["Task"].(string)
+		ruleName, ok := dataCell.Data["Rule"].(string)
+		if !ok {
+			return fmt.Errorf("task name is not a string")
+		}
+		taskName, ok := dataCell.Data["Task"].(string)
+		if !ok {
+			return fmt.Errorf("type assertion failed for Rule")
+		}
 		fields := engine.GetFields(taskName, ruleName)
 		data := dataCell.Data["Data"].(map[string]any)
 		value := []string{}
@@ -122,7 +128,6 @@ func (s *SqlStore) Flush() error {
 			args = append(args, v)
 		}
 	}
-	fmt.Println("args:", args)
 
 	err := s.db.Insert(sqldb.TableData{
 		TableName:   s.dataDocker[0].GetTableName(),

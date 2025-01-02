@@ -23,7 +23,7 @@ func RoundRobinProxySwitcher(proxyURLs ...string) (ProxyFunc, error) {
 		urls[i] = parsedU
 	}
 
-	return (&roundRobinSwitcher{urls, 0}).GetPorxy, nil
+	return (&roundRobinSwitcher{urls, 0}).GetProxy, nil
 }
 
 type roundRobinSwitcher struct {
@@ -31,7 +31,10 @@ type roundRobinSwitcher struct {
 	index     uint32
 }
 
-func (r *roundRobinSwitcher) GetPorxy(_ *http.Request) (*url.URL, error) {
+func (r *roundRobinSwitcher) GetProxy(_ *http.Request) (*url.URL, error) {
+	if len(r.proxyURLs) == 0 {
+		return nil, fmt.Errorf("proxy URL list empty")
+	}
 	index := atomic.AddUint32(&r.index, 1) - 1
 	u := r.proxyURLs[index%uint32(len(r.proxyURLs))]
 

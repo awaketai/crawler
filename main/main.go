@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/awaketai/crawler/collect"
@@ -37,6 +39,11 @@ import (
 )
 
 func main() {
+	flag.Parse()
+	if *PrintVersion {
+		Printer()
+		os.Exit(0)
+	}
 	enc := toml.NewEncoder()
 	cfg, err := config.NewConfig(
 		config.WithReader(json.NewReader(reader.WithEncoder(enc))),

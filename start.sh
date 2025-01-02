@@ -1,1 +1,1 @@
-go run main/main.go
+go run main/main.go main/version.go

@@ -47,3 +47,11 @@ func TestCh(t *testing.T) {
 		}
 	}
 }
+
+func TestMain(t *testing.T) {
+	arr := []int{1, 2, 3, 4, 5}
+	for k, v := range arr {
+		fmt.Printf("%v %v a1:%p a2:%p\n", k, v, &k, &v)
+
+	}
+}
