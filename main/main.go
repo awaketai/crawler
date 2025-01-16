@@ -2,14 +2,14 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
-	"os"
+	"strings"
 	"time"
 
+	"github.com/awaketai/crawler/cmd"
 	"github.com/awaketai/crawler/collect"
 	"github.com/awaketai/crawler/collector"
 	"github.com/awaketai/crawler/collector/sqlstorage"
@@ -25,6 +25,7 @@ import (
 	etcdReg "github.com/go-micro/plugins/v4/registry/etcd"
 	gs "github.com/go-micro/plugins/v4/server/grpc"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"github.com/spf13/cobra"
 	"go-micro.dev/v4"
 	"go-micro.dev/v4/config"
 	"go-micro.dev/v4/config/reader"
@@ -39,11 +40,12 @@ import (
 )
 
 func main() {
-	flag.Parse()
-	if *PrintVersion {
-		Printer()
-		os.Exit(0)
+	if err := cmd.Execute(); err != nil {
+		log.Fatalf("run err:%v", err)
 	}
+}
+
+func main5() {
 	enc := toml.NewEncoder()
 	cfg, err := config.NewConfig(
 		config.WithReader(json.NewReader(reader.WithEncoder(enc))),
@@ -267,4 +269,43 @@ func getSeeds(cfg config.Config, logger *zap.Logger, fetcher collect.Fetcher, st
 	}
 
 	return tasks, nil
+}
+
+func cobraTest() {
+	var echoTimes int
+	var cmdPrint = &cobra.Command{
+		Use:   "c [string to print]",
+		Short: "Print anything to the screen",
+		Long:  `print is for printing anything back to the screen.`,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("Print:", strings.Join(args, " "))
+		},
+	}
+	var cmdEcho = &cobra.Command{
+		Use:   "echo [string to echo]",
+		Short: "Echo anything to the screen",
+		Long:  `echo is for echoing anything back.Echo works a lot like print, except it has a child command.`,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("Echo: " + strings.Join(args, " "))
+		},
+	}
+	var cmdTimes = &cobra.Command{
+		Use:   "times [string to echo]",
+		Short: "Echo anything to the screen more times",
+		Long:  `echo things multiple times back to the user by providinga count and a string.`,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			for i := 0; i < echoTimes; i++ {
+				fmt.Println("Echo: " + strings.Join(args, " "))
+			}
+		}}
+	cmdTimes.Flags().IntVarP(&echoTimes, "times", "t", 1, "times echo the input")
+	var rootCmd = &cobra.Command{
+		Use: "app",
+	}
+	rootCmd.AddCommand(cmdPrint, cmdEcho)
+	cmdEcho.AddCommand(cmdTimes)
+	rootCmd.Execute()
 }
