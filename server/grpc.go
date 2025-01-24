@@ -7,7 +7,6 @@ import (
 	pb "github.com/awaketai/crawler/goout/hello"
 	"github.com/awaketai/crawler/middleware"
 	"github.com/awaketai/crawler/service"
-	"github.com/go-micro/plugins/v4/registry/etcd"
 	"github.com/go-micro/plugins/v4/server/grpc"
 	"go-micro.dev/v4"
 	"go-micro.dev/v4/client"
@@ -16,8 +15,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func RunGRPCServer(logger *zap.Logger, cfg cCfg.ServerConfig) {
-	reg := etcd.NewRegistry(registry.Addrs(cfg.RegistryAddress))
+func RunGRPCServer(logger *zap.Logger, cfg cCfg.ServerConfig, reg registry.Registry) {
 	svc := micro.NewService(
 		micro.Server(grpc.NewServer(
 			server.Id(cfg.ID),
