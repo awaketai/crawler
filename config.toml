@@ -12,7 +12,7 @@ proxy = ["http://127.0.0.1:4780", "http://127.0.0.1:4780"]
 [storage]
 dsn = "root:admin123@tcp(127.0.0.1:3306)/test?charset=utf8"
 
-[[MasterServer]]
+[[MasterServerArr]]
 HTTPListenAddress = ":8081"
 GRPCListenAddress = "localhost:8082"
 ID = "1"
@@ -22,7 +22,17 @@ RegisterInterval = 15
 ClientTimeOut   = 10
 Name = "go.micro.server.master.1"
 
-[[MasterServer]]
+[[MasterServerArr]]
+HTTPListenAddress = ":8083"
+GRPCListenAddress = "localhost:8084"
+ID = "2"
+RegistryAddress = ":2379"
+RegisterTTL = 60
+RegisterInterval = 15
+ClientTimeOut = 10
+Name = "go.micro.server.master.2"
+
+[MasterServer]
 HTTPListenAddress = ":8083"
 GRPCListenAddress = "localhost:8084"
 ID = "2"

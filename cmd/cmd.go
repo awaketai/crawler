@@ -15,15 +15,7 @@ var workerCmd = &cobra.Command{
 		worker.Run()
 	},
 }
-var masterCmd = &cobra.Command{
-	Use:   "master",
-	Short: "run master service",
-	Long:  "run master service",
-	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		master.Run()
-	},
-}
+
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "print version",
@@ -36,6 +28,6 @@ var versionCmd = &cobra.Command{
 
 func Execute() error {
 	var rootCmd = &cobra.Command{Use: "crawler"}
-	rootCmd.AddCommand(masterCmd, workerCmd, versionCmd)
+	rootCmd.AddCommand(master.MasterCmd, workerCmd, versionCmd)
 	return rootCmd.Execute()
 }
