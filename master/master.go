@@ -93,7 +93,8 @@ func (m *Master) Campaign() error {
 			}
 
 		case resp := <-workerNodeChange:
-			m.logger.Info("watch worker change", zap.Any("worker:", resp))
+			m.logger.Info("watch worker change", zap.Any("worker:", resp.regResult))
+			m.updateNodes(resp.cfg)
 		case <-time.After(20 * time.Second):
 			rsp, err := e.Leader(context.Background())
 			if err != nil {
@@ -119,10 +120,15 @@ func (m *Master) elect(e *concurrency.Election, ch chan error) {
 	ch <- err
 }
 
-func (m *Master) WatchWorker() chan *registry.Result {
+type watchWorkerChParam struct {
+	regResult *registry.Result
+	cfg       cCfg.ServerConfig
+}
+
+func (m *Master) WatchWorker() chan watchWorkerChParam {
 	cfg, err := cCfg.GetCfg()
 	if err != nil {
-		fmt.Println("---:", err)
+		m.logger.Error("get worker server config failed", zap.Error(err))
 		return nil
 	}
 	var sconfig cCfg.ServerConfig
@@ -136,7 +142,7 @@ func (m *Master) WatchWorker() chan *registry.Result {
 		m.logger.Error("watch worker failed", zap.Error(err))
 		return nil
 	}
-	ch := make(chan *registry.Result)
+	ch := make(chan watchWorkerChParam)
 	go func() {
 		for {
 			res, err := watch.Next()
@@ -144,7 +150,11 @@ func (m *Master) WatchWorker() chan *registry.Result {
 				m.logger.Error("watch worker failed", zap.Error(err))
 				continue
 			}
-			ch <- res
+			param := watchWorkerChParam{
+				regResult: res,
+				cfg:       sconfig,
+			}
+			ch <- param
 		}
 	}()
 
@@ -159,7 +169,7 @@ func (m *Master) updateNodes(sconfig cCfg.ServerConfig) {
 	services, err := m.registry.GetService(sconfig.Name)
 	if err != nil {
 		m.logger.Error("get service failed", zap.Error(err))
-		return
+		// return
 	}
 	nodes := make(map[string]*registry.Node)
 	if len(services) > 0 {

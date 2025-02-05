@@ -6,16 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var workerCmd = &cobra.Command{
-	Use:   "worker",
-	Short: "run worker service",
-	Long:  "run woker service",
-	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		worker.Run()
-	},
-}
-
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "print version",
@@ -28,6 +18,6 @@ var versionCmd = &cobra.Command{
 
 func Execute() error {
 	var rootCmd = &cobra.Command{Use: "crawler"}
-	rootCmd.AddCommand(master.MasterCmd, workerCmd, versionCmd)
+	rootCmd.AddCommand(master.MasterCmd, worker.WorkerCmd, versionCmd)
 	return rootCmd.Execute()
 }

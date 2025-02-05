@@ -16,6 +16,8 @@ gen:
 	make clean
 	make proto
 
+VERSION := v1.0.0
+BUILD_TARGET = crawler
 
 LDFLAGS = -X "main.BuildTS=$(shell date -u '+%Y-%m-%d %I:%M:%S')"
 LDFLAGS += -X "main.GitHash=$(shell git rev-parse HEAD)"
@@ -27,7 +29,21 @@ ifeq ($(gorace), 1)
 endif
 
 build:
-  go build -ldflags '$(LDFLAGS)' $(BUILD_FLAGS) main.go
+	go build -ldflags '$(LDFLAGS)' -o $(BUILD_TARGET) main/main.go
 
 lint:
-  golangci-lint run ./...
+	golangci-lint run ./...
+
+
+master1: build
+	./$(BUILD_TARGET) master --id=1 --http=:8081 --grpc=:9091
+
+master2: build
+	./$(BUILD_TARGET) master --id=2 --http=:8082 --grpc=:9092
+
+master3: build
+	./$(BUILD_TARGET) master --id=3 --http=:8083 --grpc=:9093
+
+worker1: build
+	./$(BUILD_TARGET) worker --id=1 --http=:6081 --grpc=:7091
+
