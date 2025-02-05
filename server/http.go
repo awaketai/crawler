@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	cCfg "github.com/awaketai/crawler/config"
-	pb "github.com/awaketai/crawler/goout/hello"
+	pb "github.com/awaketai/crawler/goout/common"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"go.uber.org/zap"
 	grpc2 "google.golang.org/grpc"
@@ -22,9 +22,15 @@ func RunHTTPServer(cfg cCfg.ServerConfig) {
 	opts := []grpc2.DialOption{
 		grpc2.WithTransportCredentials(insecure.NewCredentials()),
 	}
+	//
+	if cfg.IsMaster {
+		if err := pb.RegisterCrawlerMasterGwFromEndpoint(ctx, mux, cfg.GRPCListenAddress, opts); err != nil {
+			zap.L().Fatal("Register crawler http server endpoint failed")
+		}
+	}
 
 	if err := pb.RegisterGreeterGwFromEndpoint(ctx, mux, cfg.GRPCListenAddress, opts); err != nil {
-		zap.L().Fatal("Register backend grpc server endpoint failed")
+		zap.L().Fatal("Register hello http server endpoint failed")
 	}
 	zap.S().Debugf("start master http server listening on %v proxy to grpc server;%v", cfg.HTTPListenAddress, cfg.GRPCListenAddress)
 	if err := http.ListenAndServe(cfg.HTTPListenAddress, mux); err != nil {

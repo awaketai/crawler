@@ -7,7 +7,7 @@ proto:
 		--go_out=./goout  \
 		--go-grpc_out=./goout  \
 		--grpc-gateway_out=logtostderr=true,register_func_suffix=Gw:./goout \
-		./proto/hello.proto
+		./proto/*
 
 clean:
 	rm -rf goout/*

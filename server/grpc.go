@@ -4,7 +4,9 @@ import (
 	"time"
 
 	cCfg "github.com/awaketai/crawler/config"
-	pb "github.com/awaketai/crawler/goout/hello"
+	"github.com/awaketai/crawler/goout/common"
+	pb "github.com/awaketai/crawler/goout/common"
+	"github.com/awaketai/crawler/master"
 	"github.com/awaketai/crawler/middleware"
 	"github.com/awaketai/crawler/service"
 	"github.com/go-micro/plugins/v4/server/grpc"
@@ -15,7 +17,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func RunGRPCServer(logger *zap.Logger, cfg cCfg.ServerConfig, reg registry.Registry) {
+func RunGRPCServer(logger *zap.Logger, cfg cCfg.ServerConfig, reg registry.Registry, masterSrv *master.Master) {
 	svc := micro.NewService(
 		micro.Server(grpc.NewServer(
 			server.Id(cfg.ID),
@@ -36,7 +38,13 @@ func RunGRPCServer(logger *zap.Logger, cfg cCfg.ServerConfig, reg registry.Regis
 	}
 
 	svc.Init()
-
+	// 注册处理函数
+	if cfg.IsMaster {
+		err := common.RegisterCrawlerMasterHandler(svc.Server(), masterSrv)
+		if err != nil {
+			logger.Fatal("register master failed")
+		}
+	}
 	if err := pb.RegisterGreeterHandler(svc.Server(), new(service.Greet)); err != nil {
 		logger.Fatal("register handler failed")
 	}

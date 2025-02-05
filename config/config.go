@@ -21,6 +21,7 @@ type ServerConfig struct {
 	RegisterInterval  int
 	Name              string
 	ClientTimeOut     int
+	IsMaster          bool
 }
 
 func GetCfg() (config.Config, error) {

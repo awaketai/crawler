@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	pb "github.com/awaketai/crawler/goout/hello"
+	pb "github.com/awaketai/crawler/goout/common"
 )
 
 type Greet struct {

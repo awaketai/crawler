@@ -68,7 +68,7 @@ func Run() error {
 	reg := etcd.NewRegistry(registry.Addrs(sconfig.RegistryAddress))
 	go server.RunHTTPServer(sconfig)
 
-	server.RunGRPCServer(logger, sconfig, reg)
+	server.RunGRPCServer(logger, sconfig, reg, nil)
 	return nil
 }
 

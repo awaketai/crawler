@@ -1,6 +1,7 @@
 package master
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -97,6 +98,7 @@ func useCommanConfig() error {
 	sconfig.ID = masterID
 	sconfig.HTTPListenAddress = HTTPListenAddress
 	sconfig.GRPCListenAddress = GRPCListenAddress
+	sconfig.IsMaster = true
 	logger.Sugar().Debugf("grpc master server config,%+v", sconfig)
 	runMasterServer(sconfig, logger)
 	return nil
@@ -115,7 +117,7 @@ func runMasterServer(sconfig cCfg.ServerConfig, logger *zap.Logger) error {
 		return err
 	}
 	// leader选举
-	leaderMaster.NewMaster(
+	m, err := leaderMaster.NewMaster(
 		sconfig.ID,
 		leaderMaster.WithLogger(logger),
 		leaderMaster.WithGRPCAddress(sconfig.GRPCListenAddress),
@@ -123,8 +125,11 @@ func runMasterServer(sconfig cCfg.ServerConfig, logger *zap.Logger) error {
 		leaderMaster.WithRegistry(reg),
 		leaderMaster.WithSeeds(seeds),
 	)
+	if err != nil {
+		return fmt.Errorf("init master err:%w", err)
+	}
 	go server.RunHTTPServer(sconfig)
 
-	server.RunGRPCServer(logger, sconfig, reg)
+	server.RunGRPCServer(logger, sconfig, reg, m)
 	return nil
 }

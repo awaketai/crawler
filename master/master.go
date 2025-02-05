@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -16,14 +18,20 @@ import (
 	"go.uber.org/zap"
 
 	cCfg "github.com/awaketai/crawler/config"
+	"github.com/awaketai/crawler/goout/common"
 	"github.com/bwmarrin/snowflake"
+	"github.com/golang/protobuf/ptypes/empty"
 )
 
+// Master 分配资源的时机有三种
+// 1.当master成为leader时
+// 2.当客户端调用Master API进行资源的增删改查时
+// 3.当master监听到worker节点发生变化时
 type Master struct {
 	ID        string
 	ready     int32
 	leaderID  string
-	workNodes map[string]*registry.Node
+	workNodes map[string]*NodeSpec
 	IDGen     *snowflake.Node
 	etcdCli   *clientv3.Client
 	resources map[string]*ResourceSpec
@@ -32,7 +40,7 @@ type Master struct {
 
 func NewMaster(id string, opts ...Option) (*Master, error) {
 	m := &Master{
-		workNodes: make(map[string]*registry.Node),
+		workNodes: make(map[string]*NodeSpec),
 		resources: make(map[string]*ResourceSpec),
 	}
 	options := defultOptions
@@ -124,6 +132,10 @@ func (m *Master) Campaign() error {
 		case resp := <-workerNodeChange:
 			m.logger.Info("watch worker change", zap.Any("worker:", resp.regResult))
 			m.updateNodes(resp.cfg)
+			if err := m.loadResource(); err != nil {
+				m.logger.Error("work change load resource err:", zap.Error(err))
+			}
+			m.reAssign()
 		case <-time.After(20 * time.Second):
 			rsp, err := e.Leader(context.Background())
 			if err != nil {
@@ -186,9 +198,15 @@ func (m *Master) WatchWorker() chan watchWorkerChParam {
 }
 
 func (m *Master) BecomeLeader() error {
+	nodeCfg, err := m.getWorkerCfg()
+	if err != nil {
+		return err
+	}
+	m.updateNodes(*nodeCfg)
 	if err := m.loadResource(); err != nil {
 		return fmt.Errorf("loadResource failed:%w", err)
 	}
+	m.reAssign()
 	atomic.StoreInt32(&m.ready, 1)
 
 	return nil
@@ -200,10 +218,12 @@ func (m *Master) updateNodes(sconfig cCfg.ServerConfig) {
 		m.logger.Error("get service failed", zap.Error(err))
 		// return
 	}
-	nodes := make(map[string]*registry.Node)
+	nodes := make(map[string]*NodeSpec)
 	if len(services) > 0 {
 		for _, spec := range services[0].Nodes {
-			nodes[spec.Id] = spec
+			nodes[spec.Id] = &NodeSpec{
+				Node: spec,
+			}
 		}
 	}
 	added, deleted, changed := workNodeDiff(m.workNodes, nodes)
@@ -212,7 +232,7 @@ func (m *Master) updateNodes(sconfig cCfg.ServerConfig) {
 	m.workNodes = nodes
 }
 
-func workNodeDiff(old map[string]*registry.Node, new map[string]*registry.Node) ([]string, []string, []string) {
+func workNodeDiff(old map[string]*NodeSpec, new map[string]*NodeSpec) ([]string, []string, []string) {
 	added := make([]string, 0)
 	deleted := make([]string, 0)
 	changed := make([]string, 0)
@@ -264,6 +284,11 @@ type Message struct {
 	Specs []*ResourceSpec
 }
 
+type NodeSpec struct {
+	Node    *registry.Node
+	Payload int
+}
+
 type ResourceSpec struct {
 	ID           string
 	Name         string
@@ -286,25 +311,72 @@ func decode(ds []byte) (*ResourceSpec, error) {
 	return s, err
 }
 
-func (m *Master) AddResource(rs []*ResourceSpec) {
+func (m *Master) addResources(rs []*ResourceSpec) {
 	for _, r := range rs {
-		r.ID = m.IDGen.Generate().String()
-		ns, err := m.Assign(r)
+		m.addResource(r)
+	}
+}
+
+func (m *Master) addResource(r *ResourceSpec) (*NodeSpec, error) {
+	r.ID = m.IDGen.Generate().String()
+	ns, err := m.Assign(r)
+	if err != nil {
+		m.logger.Error("assign resource failed", zap.Error(err))
+		return nil, err
+	}
+	if ns == nil || ns.Node == nil {
+		m.logger.Error("invalid node")
+		return nil, err
+	}
+	fmt.Println("---------------re assign:", r.ID)
+	r.AssignedNode = ns.Node.Id + "|" + ns.Node.Address
+	r.CreationTime = time.Now().UnixNano()
+	m.logger.Debug("add resource", zap.Any("specs", r))
+	_, err = m.etcdCli.Put(context.Background(), getResourcePath(r.Name), encode(r))
+	if err != nil {
+		m.logger.Error("put resource failed", zap.Error(err))
+		return nil, err
+	}
+	m.resources[r.Name] = r
+	ns.Payload++
+
+	return ns, nil
+}
+
+// DeleteResource 接口调用删除任务
+func (m *Master) DeleteResource(ctx context.Context, spec *common.ResourceSpec, empty *empty.Empty) error {
+	r, ok := m.resources[spec.Name]
+	if !ok {
+		return fmt.Errorf("no such task:%v",spec.Name)
+	}
+	if _, err := m.etcdCli.Delete(context.Background(), getResourcePath(spec.Name)); err != nil {
+		return err
+	}
+	if r.AssignedNode != "" {
+		nodeID, err := getNodeID(r.AssignedNode)
 		if err != nil {
-			m.logger.Error("assign resource failed", zap.Error(err))
-			continue
+			return err
 		}
-		r.AssignedNode = ns.Id + "|" + ns.Address
-		r.CreationTime = time.Now().UnixNano()
-		m.logger.Debug("add resource", zap.Any("specs", r))
-		_, err = m.etcdCli.Put(context.Background(), getResourcePath(r.Name), encode(r))
-		if err != nil {
-			m.logger.Error("put resource failed", zap.Error(err))
-			continue
+		if ns, ok := m.workNodes[nodeID]; ok {
+			ns.Payload -= 1
 		}
-		m.resources[r.Name] = r
 	}
 
+	return nil
+}
+
+// AddResource 接口调用增加任务
+func (m *Master) AddResource(ctx context.Context, req *common.ResourceSpec, resp *common.NodeSpec) error {
+	nodeSpec, err := m.addResource(&ResourceSpec{Name: req.Name})
+	if err != nil {
+		return err
+	}
+	if nodeSpec != nil {
+		resp.Id = nodeSpec.Node.Id
+		resp.Address = nodeSpec.Node.Address
+	}
+
+	return nil
 }
 
 func (m *Master) HandleMsg() {
@@ -313,18 +385,48 @@ func (m *Master) HandleMsg() {
 	case msg := <-msgCh:
 		switch msg.Cmd {
 		case MSG_ADD:
-			m.AddResource(msg.Specs)
+			m.addResources(msg.Specs)
 		}
 	}
 
 }
 
-func (m *Master) Assign(r *ResourceSpec) (*registry.Node, error) {
-	for _, n := range m.workNodes {
-		return n, nil
+func (m *Master) Assign(r *ResourceSpec) (*NodeSpec, error) {
+	candidates := make([]*NodeSpec, 0, len(m.workNodes))
+	for _, node := range m.workNodes {
+		candidates = append(candidates, node)
+	}
+	// 找到最低的负载
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Payload < candidates[j].Payload
+	})
+	if len(candidates) > 0 {
+		return candidates[0], nil
 	}
 
 	return nil, errors.New("no worker nodes")
+}
+
+func (m *Master) reAssign() {
+	fmt.Println("--------重新分配", len(m.resources))
+	rs := make([]*ResourceSpec, 0, len(m.resources))
+	for _, r := range m.resources {
+		fmt.Println("--------:rrr:", r.Name)
+		if r.AssignedNode == "" {
+			rs = append(rs, r)
+			continue
+		}
+		id, err := getNodeID(r.AssignedNode)
+		if err != nil {
+			m.logger.Error("get node id failed", zap.Error(err))
+			continue
+		}
+		if _, ok := m.workNodes[id]; !ok {
+			rs = append(rs, r)
+		}
+	}
+	fmt.Println("--------------rss:", len(rs))
+	m.addResources(rs)
 }
 
 func (m *Master) AddSeed() {
@@ -347,7 +449,8 @@ func (m *Master) AddSeed() {
 			rs = append(rs, r)
 		}
 	}
-	m.AddResource(rs)
+	fmt.Println("-----init seeds:", len(rs))
+	m.addResources(rs)
 }
 
 func (m *Master) loadResource() error {
@@ -362,8 +465,8 @@ func (m *Master) loadResource() error {
 			resources[r.Name] = r
 		}
 	}
-	m.logger.Info("leader init load resource", zap.Int("len", len(m.resources)))
 	m.resources = resources
+	m.logger.Info("leader load resource", zap.Int("len", len(m.resources)))
 
 	return nil
 }
@@ -392,4 +495,13 @@ func getLocalIP() (string, error) {
 	}
 
 	return "", fmt.Errorf("获取本地ip失败")
+}
+
+func getNodeID(assigned string) (string, error) {
+	node := strings.Split(assigned, "|")
+	if len(node) < 2 {
+		return "", fmt.Errorf("invalid assigned node")
+	}
+	id := node[0]
+	return id, nil
 }

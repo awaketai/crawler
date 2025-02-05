@@ -2,11 +2,11 @@
 // source: hello.proto
 
 /*
-Package hello is a reverse proxy.
+Package common is a reverse proxy.
 
 It translates gRPC into RESTful JSON APIs.
 */
-package hello
+package common
 
 import (
 	"context"
