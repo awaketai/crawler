@@ -10,15 +10,11 @@ import (
 	"time"
 
 	"github.com/awaketai/crawler/cmd"
-	"github.com/awaketai/crawler/collect"
-	"github.com/awaketai/crawler/collector"
-	"github.com/awaketai/crawler/collector/sqlstorage"
+	"github.com/awaketai/crawler/cmd/worker"
 	"github.com/awaketai/crawler/engine"
 	pb "github.com/awaketai/crawler/goout/hello"
-	"github.com/awaketai/crawler/limiter"
 	log2 "github.com/awaketai/crawler/log"
 	"github.com/awaketai/crawler/middleware"
-	"github.com/awaketai/crawler/proxy"
 	"github.com/awaketai/crawler/service"
 	grpccli "github.com/go-micro/plugins/v4/client/grpc"
 	"github.com/go-micro/plugins/v4/config/encoder/toml"
@@ -35,7 +31,6 @@ import (
 	"go-micro.dev/v4/registry"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 )
 
@@ -94,9 +89,9 @@ type ServerConfig struct {
 }
 
 func multiWorkDouban(cfg config.Config, logger *zap.Logger) {
-	fetcher := getFetcher(cfg, logger)
-	storage := getStorage(cfg, logger)
-	tasks, err := getSeeds(cfg, logger, fetcher, storage)
+	fetcher := worker.GetFetcher(cfg, logger)
+	storage := worker.GetStorage(cfg, logger)
+	tasks, err := worker.GetSeeds(cfg, logger, fetcher, storage)
 	if err != nil {
 		panic("get seeds err:" + err.Error())
 	}
@@ -109,48 +104,6 @@ func multiWorkDouban(cfg config.Config, logger *zap.Logger) {
 		engine.WithScheduler(engine.NewSchedule()),
 	)
 	go s.Run()
-}
-
-func getProxy(cfg config.Config) (proxy.ProxyFunc, error) {
-	proxyURLs := cfg.Get("fetcher", "proxy").StringSlice([]string{})
-	p, err := proxy.RoundRobinProxySwitcher(proxyURLs...)
-	if err != nil {
-		panic("RoundRobinProxySwitcher err:" + err.Error())
-	}
-
-	return p, err
-}
-
-func getFetcher(cfg config.Config, logger *zap.Logger) collect.Fetcher {
-	p, err := getProxy(cfg)
-	if err != nil {
-		panic("getProxy err:" + err.Error())
-	}
-	timeout := cfg.Get("fetcher", "timeout").Int(3000)
-	fetcher := &collect.BrowserFetch{
-		Timeout: time.Duration(timeout) * time.Millisecond,
-		Logger:  logger,
-		Proxy:   p,
-	}
-
-	return fetcher
-}
-
-func getStorage(cfg config.Config, logger *zap.Logger) collector.Storager {
-	dsn := cfg.Get("storage", "dsn").String("")
-	if dsn == "" {
-		panic("storage dsn is empty")
-	}
-	storage, err := sqlstorage.NewSqlStore(
-		sqlstorage.WithDSN(dsn),
-		sqlstorage.WithLogger(logger.Named("sqlDB")),
-		sqlstorage.WithBatchCount(1),
-	)
-	if err != nil {
-		panic("create sql storage failed:" + err.Error())
-	}
-
-	return storage
 }
 
 func RunGRPCServer(logger *zap.Logger, cfg config.Config) {
@@ -227,48 +180,6 @@ func reqGRPC(cfg config.Config) {
 		fmt.Println("grpc req err:", err)
 	}
 	fmt.Println("grpc resp:", rsp.Greeting)
-}
-
-func getSeeds(cfg config.Config, logger *zap.Logger, fetcher collect.Fetcher, storage collector.Storager) ([]*collect.Task, error) {
-	var tcfg []collect.Options
-	if err := cfg.Get("Tasks").Scan(&tcfg); err != nil {
-		logger.Error("get tasks err", zap.Error(err))
-		return nil, err
-	}
-	tasks := make([]*collect.Task, 0, len(tcfg))
-	for _, v := range tcfg {
-		t := collect.NewTask(
-			collect.WithCookie(v.Cookie),
-			collect.WithFetcher(fetcher),
-			collect.WithLogger(logger),
-			collect.WithName(v.Name),
-			collect.WithReload(v.Reload),
-			collect.WithStorage(storage),
-			collect.WithUrl(v.Url),
-		)
-		if v.WaitTime > 0 {
-			t.WaitTime = v.WaitTime
-		}
-		if v.MaxDepth > 0 {
-			t.MaxDepth = v.MaxDepth
-		}
-		var limits []limiter.RateLimiter
-		if len(v.LimitCfg) > 0 {
-			for _, l := range v.LimitCfg {
-				lm := rate.NewLimiter(limiter.Per(l.EventCount, time.Duration(l.EventDur)*time.Second), 1)
-				limits = append(limits, lm)
-			}
-			multiLimiter := limiter.NewMultiLimit(limits...)
-			t.Limit = multiLimiter
-		}
-		switch v.FetchType {
-		case collect.BrowserFetchType:
-			t.Fetcher = fetcher
-		}
-		tasks = append(tasks, t)
-	}
-
-	return tasks, nil
 }
 
 func cobraTest() {

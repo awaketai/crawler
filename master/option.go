@@ -1,6 +1,7 @@
 package master
 
 import (
+	"github.com/awaketai/crawler/collect"
 	"go-micro.dev/v4/registry"
 	"go.uber.org/zap"
 )
@@ -10,6 +11,7 @@ type options struct {
 	registryURL string
 	GRPCAddress string
 	registry    registry.Registry
+	Seeds       []*collect.Task
 }
 
 var defultOptions = options{
@@ -39,5 +41,11 @@ func WithGRPCAddress(address string) Option {
 func WithRegistry(reg registry.Registry) Option {
 	return func(o *options) {
 		o.registry = reg
+	}
+}
+
+func WithSeeds(seeds []*collect.Task) Option {
+	return func(o *options) {
+		o.Seeds = seeds
 	}
 }

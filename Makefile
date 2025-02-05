@@ -47,3 +47,6 @@ master3: build
 worker1: build
 	./$(BUILD_TARGET) worker --id=1 --http=:6081 --grpc=:7091
 
+worker2: build
+	./$(BUILD_TARGET) worker --id=2 --http=:6082 --grpc=:7092
+

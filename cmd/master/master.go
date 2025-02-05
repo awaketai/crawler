@@ -5,6 +5,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/awaketai/crawler/cmd/worker"
 	"github.com/awaketai/crawler/config"
 	cCfg "github.com/awaketai/crawler/config"
 	cLog "github.com/awaketai/crawler/log"
@@ -101,9 +102,18 @@ func useCommanConfig() error {
 	return nil
 }
 
-func runMasterServer(sconfig cCfg.ServerConfig, logger *zap.Logger) {
+func runMasterServer(sconfig cCfg.ServerConfig, logger *zap.Logger) error {
 	reg := etcd.NewRegistry(registry.Addrs(sconfig.RegistryAddress))
-
+	cfg, err := config.GetCfg()
+	if err != nil {
+		return err
+	}
+	fetcher := worker.GetFetcher(cfg, logger)
+	storage := worker.GetStorage(cfg, logger)
+	seeds, err := worker.GetSeeds(cfg, logger, fetcher, storage)
+	if err != nil {
+		return err
+	}
 	// leader选举
 	leaderMaster.NewMaster(
 		sconfig.ID,
@@ -111,8 +121,10 @@ func runMasterServer(sconfig cCfg.ServerConfig, logger *zap.Logger) {
 		leaderMaster.WithGRPCAddress(sconfig.GRPCListenAddress),
 		leaderMaster.WithRegistryURL(sconfig.RegistryAddress),
 		leaderMaster.WithRegistry(reg),
+		leaderMaster.WithSeeds(seeds),
 	)
 	go server.RunHTTPServer(sconfig)
 
 	server.RunGRPCServer(logger, sconfig, reg)
+	return nil
 }

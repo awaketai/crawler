@@ -2,6 +2,7 @@ package master
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	cCfg "github.com/awaketai/crawler/config"
+	"github.com/bwmarrin/snowflake"
 )
 
 type Master struct {
@@ -22,18 +24,26 @@ type Master struct {
 	ready     int32
 	leaderID  string
 	workNodes map[string]*registry.Node
+	IDGen     *snowflake.Node
+	etcdCli   *clientv3.Client
+	resources map[string]*ResourceSpec
 	options
 }
 
 func NewMaster(id string, opts ...Option) (*Master, error) {
 	m := &Master{
 		workNodes: make(map[string]*registry.Node),
+		resources: make(map[string]*ResourceSpec),
 	}
 	options := defultOptions
 	for _, o := range opts {
 		o(&options)
 	}
-
+	node, err := snowflake.NewNode(1)
+	if err != nil {
+		return nil, err
+	}
+	m.IDGen = node
 	ipv4, err := getLocalIP()
 	if err != nil {
 		return nil, err
@@ -41,7 +51,23 @@ func NewMaster(id string, opts ...Option) (*Master, error) {
 	m.options = options
 	m.ID = getMasterID(id, ipv4, m.GRPCAddress)
 	m.logger.Info("master id", zap.String("id", m.ID))
+	endpoints := []string{m.registryURL}
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints: endpoints,
+	})
+	if err != nil {
+		return nil, err
+	}
+	workerCfg, err := m.getWorkerCfg()
+	if err != nil {
+		return nil, err
+	}
+	m.etcdCli = cli
+	m.updateNodes(*workerCfg)
+	m.AddSeed()
+
 	go m.Campaign()
+	go m.HandleMsg()
 	return m, nil
 }
 
@@ -84,7 +110,10 @@ func (m *Master) Campaign() error {
 				m.logger.Info("master change to leader")
 				m.leaderID = m.ID
 				if !m.IsLeader() {
-					m.BecomeLeader()
+					err = m.BecomeLeader()
+					if err != nil {
+						m.logger.Error("Become leader failed:%w", zap.Error(err))
+					}
 				}
 			}
 		case resp := <-leaderChange:
@@ -126,14 +155,9 @@ type watchWorkerChParam struct {
 }
 
 func (m *Master) WatchWorker() chan watchWorkerChParam {
-	cfg, err := cCfg.GetCfg()
+	sconfig, err := m.getWorkerCfg()
 	if err != nil {
-		m.logger.Error("get worker server config failed", zap.Error(err))
-		return nil
-	}
-	var sconfig cCfg.ServerConfig
-	if err := cfg.Get("WorkerServer").Scan(&sconfig); err != nil {
-		m.logger.Error("get GRPC Server config failed", zap.Error(err))
+		m.logger.Error("get worker config err:", zap.Error(err))
 		return nil
 	}
 
@@ -152,7 +176,7 @@ func (m *Master) WatchWorker() chan watchWorkerChParam {
 			}
 			param := watchWorkerChParam{
 				regResult: res,
-				cfg:       sconfig,
+				cfg:       *sconfig,
 			}
 			ch <- param
 		}
@@ -161,8 +185,13 @@ func (m *Master) WatchWorker() chan watchWorkerChParam {
 	return ch
 }
 
-func (m *Master) BecomeLeader() {
+func (m *Master) BecomeLeader() error {
+	if err := m.loadResource(); err != nil {
+		return fmt.Errorf("loadResource failed:%w", err)
+	}
 	atomic.StoreInt32(&m.ready, 1)
+
+	return nil
 }
 
 func (m *Master) updateNodes(sconfig cCfg.ServerConfig) {
@@ -204,6 +233,139 @@ func workNodeDiff(old map[string]*registry.Node, new map[string]*registry.Node) 
 	}
 
 	return added, deleted, changed
+}
+
+func (m *Master) getWorkerCfg() (*cCfg.ServerConfig, error) {
+	cfg, err := cCfg.GetCfg()
+	if err != nil {
+		m.logger.Error("get worker server config failed", zap.Error(err))
+		return nil, err
+	}
+	var sconfig cCfg.ServerConfig
+	if err := cfg.Get("WorkerServer").Scan(&sconfig); err != nil {
+		m.logger.Error("get GRPC Server config failed", zap.Error(err))
+		return nil, err
+	}
+
+	return &sconfig, nil
+}
+
+type Command int
+
+const RESOURCE_PATH = "/resources"
+
+const (
+	MSG_ADD Command = iota
+	MSG_DEL
+)
+
+type Message struct {
+	Cmd   Command
+	Specs []*ResourceSpec
+}
+
+type ResourceSpec struct {
+	ID           string
+	Name         string
+	AssignedNode string
+	CreationTime int64
+}
+
+func getResourcePath(name string) string {
+	return fmt.Sprintf("%s/%s", RESOURCE_PATH, name)
+}
+
+func encode(s *ResourceSpec) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+func decode(ds []byte) (*ResourceSpec, error) {
+	var s *ResourceSpec
+	err := json.Unmarshal(ds, s)
+	return s, err
+}
+
+func (m *Master) AddResource(rs []*ResourceSpec) {
+	for _, r := range rs {
+		r.ID = m.IDGen.Generate().String()
+		ns, err := m.Assign(r)
+		if err != nil {
+			m.logger.Error("assign resource failed", zap.Error(err))
+			continue
+		}
+		r.AssignedNode = ns.Id + "|" + ns.Address
+		r.CreationTime = time.Now().UnixNano()
+		m.logger.Debug("add resource", zap.Any("specs", r))
+		_, err = m.etcdCli.Put(context.Background(), getResourcePath(r.Name), encode(r))
+		if err != nil {
+			m.logger.Error("put resource failed", zap.Error(err))
+			continue
+		}
+		m.resources[r.Name] = r
+	}
+
+}
+
+func (m *Master) HandleMsg() {
+	msgCh := make(chan *Message)
+	select {
+	case msg := <-msgCh:
+		switch msg.Cmd {
+		case MSG_ADD:
+			m.AddResource(msg.Specs)
+		}
+	}
+
+}
+
+func (m *Master) Assign(r *ResourceSpec) (*registry.Node, error) {
+	for _, n := range m.workNodes {
+		return n, nil
+	}
+
+	return nil, errors.New("no worker nodes")
+}
+
+func (m *Master) AddSeed() {
+	rs := make([]*ResourceSpec, 0, len(m.Seeds))
+	for _, seed := range m.Seeds {
+		resp, err := m.etcdCli.Get(
+			context.Background(),
+			getResourcePath(seed.Name),
+			clientv3.WithSerializable(),
+			clientv3.WithPrefix(),
+		)
+		if err != nil {
+			m.logger.Error("etcd get resource failed", zap.Error(err))
+			continue
+		}
+		if len(resp.Kvs) == 0 {
+			r := &ResourceSpec{
+				Name: seed.Name,
+			}
+			rs = append(rs, r)
+		}
+	}
+	m.AddResource(rs)
+}
+
+func (m *Master) loadResource() error {
+	resp, err := m.etcdCli.Get(context.Background(), RESOURCE_PATH, clientv3.WithSerializable())
+	if err != nil {
+		return fmt.Errorf("etcd get failed")
+	}
+	resources := make(map[string]*ResourceSpec)
+	for _, kv := range resp.Kvs {
+		r, err := decode(kv.Value)
+		if err == nil && r != nil {
+			resources[r.Name] = r
+		}
+	}
+	m.logger.Info("leader init load resource", zap.Int("len", len(m.resources)))
+	m.resources = resources
+
+	return nil
 }
 
 func getMasterID(id string, ipv4 string, GRPCAddress string) string {
