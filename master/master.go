@@ -9,9 +9,11 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"go-micro.dev/v4/client"
 	"go-micro.dev/v4/registry"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
@@ -28,6 +30,7 @@ import (
 // 2.当客户端调用Master API进行资源的增删改查时
 // 3.当master监听到worker节点发生变化时
 type Master struct {
+	options
 	ID        string
 	ready     int32
 	leaderID  string
@@ -35,7 +38,8 @@ type Master struct {
 	IDGen     *snowflake.Node
 	etcdCli   *clientv3.Client
 	resources map[string]*ResourceSpec
-	options
+	forwardCli common.CrawlerMasterService
+	mu sync.Mutex
 }
 
 func NewMaster(id string, opts ...Option) (*Master, error) {
@@ -105,11 +109,14 @@ func (m *Master) Campaign() error {
 	select {
 	case resp := <-leaderChange:
 		m.logger.Info("leader change", zap.String("leader", string(resp.Kvs[0].Value)))
+		// 保存master id
+		m.leaderID = string(resp.Kvs[0].Value)
 	}
 	workerNodeChange := m.WatchWorker()
 	for {
 		select {
 		case err := <-leaderCh:
+			m.leaderID = m.ID
 			if err != nil {
 				m.logger.Error("leader campaign failed", zap.Error(err))
 				go m.elect(e, leaderCh)
@@ -127,6 +134,7 @@ func (m *Master) Campaign() error {
 		case resp := <-leaderChange:
 			if len(resp.Kvs) > 0 {
 				m.logger.Info("watch leader change", zap.String("leader", string(resp.Kvs[0].Value)))
+				m.leaderID = string(resp.Kvs[0].Value)
 			}
 
 		case resp := <-workerNodeChange:
@@ -328,7 +336,6 @@ func (m *Master) addResource(r *ResourceSpec) (*NodeSpec, error) {
 		m.logger.Error("invalid node")
 		return nil, err
 	}
-	fmt.Println("---------------re assign:", r.ID)
 	r.AssignedNode = ns.Node.Id + "|" + ns.Node.Address
 	r.CreationTime = time.Now().UnixNano()
 	m.logger.Debug("add resource", zap.Any("specs", r))
@@ -345,6 +352,13 @@ func (m *Master) addResource(r *ResourceSpec) (*NodeSpec, error) {
 
 // DeleteResource 接口调用删除任务
 func (m *Master) DeleteResource(ctx context.Context, spec *common.ResourceSpec, empty *empty.Empty) error {
+	if !m.IsLeader() && m.leaderID != "" && m.leaderID != m.ID {
+		addr := getLeaderAddr(m.leaderID)
+		_,err := m.forwardCli.DeleteResource(ctx,spec,client.WithAddress(addr))
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	r, ok := m.resources[spec.Name]
 	if !ok {
 		return fmt.Errorf("no such task:%v",spec.Name)
@@ -352,6 +366,7 @@ func (m *Master) DeleteResource(ctx context.Context, spec *common.ResourceSpec, 
 	if _, err := m.etcdCli.Delete(context.Background(), getResourcePath(spec.Name)); err != nil {
 		return err
 	}
+	delete(m.resources,spec.Name)
 	if r.AssignedNode != "" {
 		nodeID, err := getNodeID(r.AssignedNode)
 		if err != nil {
@@ -365,8 +380,25 @@ func (m *Master) DeleteResource(ctx context.Context, spec *common.ResourceSpec, 
 	return nil
 }
 
+func (m *Master) SetForwardCli(forwardCli common.CrawlerMasterService){
+	m.forwardCli = forwardCli
+}
+
 // AddResource 接口调用增加任务
+// 如果当前节点不是leader，则获取leader的地址进行请求转发
 func (m *Master) AddResource(ctx context.Context, req *common.ResourceSpec, resp *common.NodeSpec) error {
+	if !m.IsLeader() && m.leaderID != "" && m.leaderID != m.ID {
+		addr := getLeaderAddr(m.leaderID)
+		nodeSpec,err := m.forwardCli.AddResource(ctx,req,client.WithAddress(addr))
+		if err != nil { 
+			return err
+		}
+		resp.Id = nodeSpec.Id
+		resp.Address = nodeSpec.Address
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	nodeSpec, err := m.addResource(&ResourceSpec{Name: req.Name})
 	if err != nil {
 		return err
@@ -472,7 +504,7 @@ func (m *Master) loadResource() error {
 }
 
 func getMasterID(id string, ipv4 string, GRPCAddress string) string {
-	return fmt.Sprintf("master-%s-%s-%s", id, ipv4, GRPCAddress)
+	return fmt.Sprintf("master-%s-%s%s", id, ipv4, GRPCAddress)
 }
 
 func getLocalIP() (string, error) {
@@ -504,4 +536,13 @@ func getNodeID(assigned string) (string, error) {
 	}
 	id := node[0]
 	return id, nil
+}
+
+func getLeaderAddr(addr string) string {
+	s := strings.Split(addr,"-")
+	if len(s) < 3 {
+		return ""
+	}
+
+	return s[2]
 }

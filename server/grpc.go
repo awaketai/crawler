@@ -9,6 +9,7 @@ import (
 	"github.com/awaketai/crawler/master"
 	"github.com/awaketai/crawler/middleware"
 	"github.com/awaketai/crawler/service"
+	grpccli "github.com/go-micro/plugins/v4/client/grpc"
 	"github.com/go-micro/plugins/v4/server/grpc"
 	"go-micro.dev/v4"
 	"go-micro.dev/v4/client"
@@ -28,6 +29,7 @@ func RunGRPCServer(logger *zap.Logger, cfg cCfg.ServerConfig, reg registry.Regis
 		micro.RegisterInterval(time.Duration(cfg.RegisterInterval)*time.Second),
 		micro.WrapHandler(middleware.LogWrapper(logger)),
 		micro.Name(cfg.Name),
+		micro.Client(grpccli.NewClient()),
 	)
 
 	// 设置micro 客户端默认超时时间为10秒钟
@@ -38,13 +40,16 @@ func RunGRPCServer(logger *zap.Logger, cfg cCfg.ServerConfig, reg registry.Regis
 	}
 
 	svc.Init()
-	// 注册处理函数
 	if cfg.IsMaster {
+		cli := common.NewCrawlerMasterService(cfg.Name, svc.Client())
+		masterSrv.SetForwardCli(cli)
+		// 注册处理函数
 		err := common.RegisterCrawlerMasterHandler(svc.Server(), masterSrv)
 		if err != nil {
 			logger.Fatal("register master failed")
 		}
 	}
+
 	if err := pb.RegisterGreeterHandler(svc.Server(), new(service.Greet)); err != nil {
 		logger.Fatal("register handler failed")
 	}
