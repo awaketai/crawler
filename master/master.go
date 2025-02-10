@@ -31,15 +31,15 @@ import (
 // 3.当master监听到worker节点发生变化时
 type Master struct {
 	options
-	ID        string
-	ready     int32
-	leaderID  string
-	workNodes map[string]*NodeSpec
-	IDGen     *snowflake.Node
-	etcdCli   *clientv3.Client
-	resources map[string]*ResourceSpec
+	ID         string
+	ready      int32
+	leaderID   string
+	workNodes  map[string]*NodeSpec
+	IDGen      *snowflake.Node
+	etcdCli    *clientv3.Client
+	resources  map[string]*ResourceSpec
 	forwardCli common.CrawlerMasterService
-	mu sync.Mutex
+	mu         sync.Mutex
 }
 
 func NewMaster(id string, opts ...Option) (*Master, error) {
@@ -226,6 +226,8 @@ func (m *Master) updateNodes(sconfig cCfg.ServerConfig) {
 		m.logger.Error("get service failed", zap.Error(err))
 		// return
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	nodes := make(map[string]*NodeSpec)
 	if len(services) > 0 {
 		for _, spec := range services[0].Nodes {
@@ -315,7 +317,7 @@ func encode(s *ResourceSpec) string {
 
 func decode(ds []byte) (*ResourceSpec, error) {
 	var s *ResourceSpec
-	err := json.Unmarshal(ds, s)
+	err := json.Unmarshal(ds, &s)
 	return s, err
 }
 
@@ -354,19 +356,19 @@ func (m *Master) addResource(r *ResourceSpec) (*NodeSpec, error) {
 func (m *Master) DeleteResource(ctx context.Context, spec *common.ResourceSpec, empty *empty.Empty) error {
 	if !m.IsLeader() && m.leaderID != "" && m.leaderID != m.ID {
 		addr := getLeaderAddr(m.leaderID)
-		_,err := m.forwardCli.DeleteResource(ctx,spec,client.WithAddress(addr))
+		_, err := m.forwardCli.DeleteResource(ctx, spec, client.WithAddress(addr))
 		return err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	r, ok := m.resources[spec.Name]
 	if !ok {
-		return fmt.Errorf("no such task:%v",spec.Name)
+		return fmt.Errorf("no such task:%v", spec.Name)
 	}
 	if _, err := m.etcdCli.Delete(context.Background(), getResourcePath(spec.Name)); err != nil {
 		return err
 	}
-	delete(m.resources,spec.Name)
+	delete(m.resources, spec.Name)
 	if r.AssignedNode != "" {
 		nodeID, err := getNodeID(r.AssignedNode)
 		if err != nil {
@@ -380,7 +382,7 @@ func (m *Master) DeleteResource(ctx context.Context, spec *common.ResourceSpec, 
 	return nil
 }
 
-func (m *Master) SetForwardCli(forwardCli common.CrawlerMasterService){
+func (m *Master) SetForwardCli(forwardCli common.CrawlerMasterService) {
 	m.forwardCli = forwardCli
 }
 
@@ -389,8 +391,8 @@ func (m *Master) SetForwardCli(forwardCli common.CrawlerMasterService){
 func (m *Master) AddResource(ctx context.Context, req *common.ResourceSpec, resp *common.NodeSpec) error {
 	if !m.IsLeader() && m.leaderID != "" && m.leaderID != m.ID {
 		addr := getLeaderAddr(m.leaderID)
-		nodeSpec,err := m.forwardCli.AddResource(ctx,req,client.WithAddress(addr))
-		if err != nil { 
+		nodeSpec, err := m.forwardCli.AddResource(ctx, req, client.WithAddress(addr))
+		if err != nil {
 			return err
 		}
 		resp.Id = nodeSpec.Id
@@ -440,10 +442,10 @@ func (m *Master) Assign(r *ResourceSpec) (*NodeSpec, error) {
 }
 
 func (m *Master) reAssign() {
-	fmt.Println("--------重新分配", len(m.resources))
 	rs := make([]*ResourceSpec, 0, len(m.resources))
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, r := range m.resources {
-		fmt.Println("--------:rrr:", r.Name)
 		if r.AssignedNode == "" {
 			rs = append(rs, r)
 			continue
@@ -457,7 +459,6 @@ func (m *Master) reAssign() {
 			rs = append(rs, r)
 		}
 	}
-	fmt.Println("--------------rss:", len(rs))
 	m.addResources(rs)
 }
 
@@ -481,16 +482,17 @@ func (m *Master) AddSeed() {
 			rs = append(rs, r)
 		}
 	}
-	fmt.Println("-----init seeds:", len(rs))
 	m.addResources(rs)
 }
 
 func (m *Master) loadResource() error {
-	resp, err := m.etcdCli.Get(context.Background(), RESOURCE_PATH, clientv3.WithSerializable())
+	resp, err := m.etcdCli.Get(context.Background(), RESOURCE_PATH, clientv3.WithPrefix(), clientv3.WithSerializable())
 	if err != nil {
 		return fmt.Errorf("etcd get failed")
 	}
 	resources := make(map[string]*ResourceSpec)
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, kv := range resp.Kvs {
 		r, err := decode(kv.Value)
 		if err == nil && r != nil {
@@ -539,7 +541,7 @@ func getNodeID(assigned string) (string, error) {
 }
 
 func getLeaderAddr(addr string) string {
-	s := strings.Split(addr,"-")
+	s := strings.Split(addr, "-")
 	if len(s) < 3 {
 		return ""
 	}
