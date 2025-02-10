@@ -1,12 +1,16 @@
 package worker
 
 import (
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/awaketai/crawler/collect"
 	"github.com/awaketai/crawler/collector"
 	"github.com/awaketai/crawler/collector/sqlstorage"
 	cCfg "github.com/awaketai/crawler/config"
+	"github.com/awaketai/crawler/engine"
+	"github.com/awaketai/crawler/extensions"
 	"github.com/awaketai/crawler/limiter"
 	cLog "github.com/awaketai/crawler/log"
 	"github.com/awaketai/crawler/proxy"
@@ -21,18 +25,25 @@ import (
 
 func init() {
 	WorkerCmd.Flags().StringVar(
-		&masterID, "id", "1", "set worker id")
-	WorkerCmd.Flags().StringVar(
 		&HTTPListenAddress, "http", ":3081", "set HTTP listen address")
 
 	WorkerCmd.Flags().StringVar(
 		&GRPCListenAddress, "grpc", ":4091", "set GRPC listen address")
+	WorkerCmd.Flags().StringVar(
+		&workerID, "id", "", "set worker id")
+
+	WorkerCmd.Flags().StringVar(
+		&podIP, "podip", "", "set worker id")
+	WorkerCmd.Flags().BoolVar(
+		&cluster, "cluster", true, "run mode")
 }
 
 var (
-	masterID          string
 	HTTPListenAddress string
 	GRPCListenAddress string
+	cluster           bool
+	workerID          string
+	podIP             string
 )
 
 var WorkerCmd = &cobra.Command{
@@ -61,15 +72,51 @@ func Run() error {
 		return err
 	}
 	// 赋值为命令行中接收到的值
-	sconfig.ID = masterID
+	sconfig.ID = workerID
 	sconfig.HTTPListenAddress = HTTPListenAddress
 	sconfig.GRPCListenAddress = GRPCListenAddress
 	logger.Sugar().Debugf("grpc worker server config,%+v", sconfig)
 	reg := etcd.NewRegistry(registry.Addrs(sconfig.RegistryAddress))
 	go server.RunHTTPServer(sconfig)
-
+	go runTaskEngine(sconfig,logger)
 	server.RunGRPCServer(logger, sconfig, reg, nil)
 	return nil
+}
+
+func runTaskEngine(sconfig cCfg.ServerConfig, logger *zap.Logger) {
+	cfg, err := cCfg.GetCfg()
+	if err != nil {
+		panic(err)
+	}
+	fetcher := GetFetcher(cfg, logger)
+	storage := GetStorage(cfg, logger)
+	seeds, err := GetSeeds(cfg, logger, fetcher, storage)
+	if err != nil {
+		panic(err)
+	}
+	s, err := engine.NewCrawler(
+		engine.WithFetcher(fetcher),
+		engine.WithLogger(logger),
+		engine.WithRegistryURL(sconfig.RegistryAddress),
+		engine.WithWorkCount(5),
+		engine.WithSeeds(seeds),
+		engine.WithScheduler(engine.NewSchedule()),
+		engine.WithStorage(storage),
+	)
+	if err != nil {
+		panic(err)
+	}
+	if workerID == "" {
+		if podIP != "" {
+			ip := extensions.IDByIP(podIP)
+			workerID = strconv.Itoa(int(ip))
+		} else {
+			workerID = fmt.Sprintf("%d", time.Now().UnixNano())
+		}
+	}
+	id := sconfig.Name + "-" + workerID
+	zap.S().Debug("worker id", workerID)
+	go s.Run(id, cluster)
 }
 
 func GetSeeds(cfg config.Config, logger *zap.Logger, fetcher collect.Fetcher, storage collector.Storager) ([]*collect.Task, error) {

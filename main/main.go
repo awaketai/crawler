@@ -94,14 +94,17 @@ func multiWorkDouban(cfg config.Config, logger *zap.Logger) {
 		panic("get seeds err:" + err.Error())
 	}
 
-	s := engine.NewCrawler(
+	s, err := engine.NewCrawler(
 		engine.WithFetcher(fetcher),
 		engine.WithLogger(logger),
 		engine.WithTasks(tasks),
 		engine.WithWorkCount(5),
 		engine.WithScheduler(engine.NewSchedule()),
 	)
-	go s.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+	go s.Run("1", true)
 }
 
 func RunGRPCServer(logger *zap.Logger, cfg config.Config) {

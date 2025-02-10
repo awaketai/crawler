@@ -310,12 +310,12 @@ func getResourcePath(name string) string {
 	return fmt.Sprintf("%s/%s", RESOURCE_PATH, name)
 }
 
-func encode(s *ResourceSpec) string {
+func Encode(s *ResourceSpec) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
 
-func decode(ds []byte) (*ResourceSpec, error) {
+func Decode(ds []byte) (*ResourceSpec, error) {
 	var s *ResourceSpec
 	err := json.Unmarshal(ds, &s)
 	return s, err
@@ -341,7 +341,7 @@ func (m *Master) addResource(r *ResourceSpec) (*NodeSpec, error) {
 	r.AssignedNode = ns.Node.Id + "|" + ns.Node.Address
 	r.CreationTime = time.Now().UnixNano()
 	m.logger.Debug("add resource", zap.Any("specs", r))
-	_, err = m.etcdCli.Put(context.Background(), getResourcePath(r.Name), encode(r))
+	_, err = m.etcdCli.Put(context.Background(), getResourcePath(r.Name), Encode(r))
 	if err != nil {
 		m.logger.Error("put resource failed", zap.Error(err))
 		return nil, err
@@ -494,7 +494,7 @@ func (m *Master) loadResource() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, kv := range resp.Kvs {
-		r, err := decode(kv.Value)
+		r, err := Decode(kv.Value)
 		if err == nil && r != nil {
 			resources[r.Name] = r
 		}

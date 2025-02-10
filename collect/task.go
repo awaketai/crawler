@@ -9,6 +9,7 @@ type Task struct {
 	VisitedLock sync.Mutex
 	// Rule 当前任务规则
 	Rule RuleTree
+	Closed bool
 	Options
 }
 

@@ -1,0 +1,13 @@
+package extensions
+
+import (
+	"bytes"
+	"encoding/binary"
+	"net"
+)
+
+func IDByIP(ip string) uint32 {
+	var id uint32
+	binary.Read(bytes.NewBuffer(net.ParseIP(ip).To4()),binary.BigEndian,&id)
+	return id
+}
